@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>INDEPENDENT — голосовой помощник для повседневной самостоятельности</title>
+  <meta name="description" content="INDEPENDENT — единая голосовая платформа на казахском и русском языках, которая помогает пожилым людям решать бытовые задачи самостоятельно." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Lora:ital,wght@0,600;1,500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#demo" data-i18n="skip">Перейти к помощнику</a>
+
+  <!-- ============ HEADER ============ -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#top" class="logo" aria-label="INDEPENDENT">
+        <span class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="3"/><rect x="16" y="9" width="8" height="15" rx="4" fill="currentColor"/><path d="M12 20a8 8 0 0 0 16 0M20 28v4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        </span>
+        <span class="logo-text">INDEPENDENT</span>
+      </a>
+
+      <nav class="main-nav" aria-label="Основное меню">
+        <a href="#features" data-i18n="nav.features">Возможности</a>
+        <a href="#principle" data-i18n="nav.principle">Принцип</a>
+        <a href="#family" data-i18n="nav.family">Для семьи</a>
+        <a href="#partners" data-i18n="nav.partners">Партнёрам</a>
+      </nav>
+
+      <div class="a11y-controls">
+        <div class="seg" role="group" aria-label="Язык / Тіл">
+          <button class="seg-btn is-active" data-lang="ru" aria-pressed="true">РУС</button>
+          <button class="seg-btn" data-lang="kk" aria-pressed="false">ҚАЗ</button>
+        </div>
+        <div class="seg" role="group" aria-label="Размер текста">
+          <button class="seg-btn is-active" data-size="1" aria-pressed="true" title="Обычный текст">A</button>
+          <button class="seg-btn seg-a2" data-size="2" aria-pressed="false" title="Крупный текст">A</button>
+          <button class="seg-btn seg-a3" data-size="3" aria-pressed="false" title="Очень крупный текст">A</button>
+        </div>
+        <button class="contrast-btn" id="contrastBtn" aria-pressed="false" data-i18n-title="contrast" title="Высокий контраст">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- ============ HERO + DEMO ============ -->
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow" data-i18n="hero.eyebrow">Голосовой помощник для повседневной самостоятельности</p>
+          <h1 data-i18n-html="hero.title">Просто скажите, <em>что нужно.</em></h1>
+          <p class="lead" data-i18n="hero.lead">Такси, продукты, уборка, мастер, маршрут — одна платформа вместо десятков приложений. Не нужно ничего изучать и ждать, пока ответят дети: помощник понимает казахскую и русскую речь.</p>
+          <div class="hero-actions">
+            <a href="#demo" class="btn btn-primary btn-lg" data-i18n="hero.cta">Попробовать помощника</a>
+            <a href="#family" class="btn btn-ghost btn-lg" data-i18n="hero.cta2">Как настроить для близких</a>
+          </div>
+          <ul class="hero-facts">
+            <li><strong>1</strong><span data-i18n="hero.f1">платформа вместо десятков приложений</span></li>
+            <li><strong>2</strong><span data-i18n="hero.f2">языка: қазақша и по-русски</span></li>
+            <li><strong>24/7</strong><span data-i18n="hero.f3">живой оператор, если ИИ не справился</span></li>
+          </ul>
+        </div>
+
+        <!-- Assistant demo -->
+        <div class="assistant" id="demo" aria-label="Демо помощника">
+          <div class="assistant-top">
+            <div class="assistant-user">
+              <span class="avatar" aria-hidden="true">Р</span>
+              <div>
+                <div class="assistant-name" id="userGreeting">Роза апа</div>
+                <div class="assistant-status"><span class="dot"></span><span data-i18n="demo.status">Помощник на связи</span></div>
+              </div>
+            </div>
+            <button class="sound-btn" id="soundBtn" aria-pressed="true" data-i18n-title="demo.sound" title="Озвучивать ответы">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+
+          <div class="chat" id="chat" aria-live="polite"></div>
+
+          <div class="chips" id="chips"></div>
+
+          <div class="assistant-controls">
+            <button class="mic" id="micBtn" aria-label="Нажмите и говорите">
+              <span class="mic-ring" aria-hidden="true"></span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <p class="mic-hint" id="micHint" data-i18n="demo.hint">Нажмите и скажите, что нужно</p>
+            <form class="text-input" id="textForm" autocomplete="off">
+              <label class="sr-only" for="textField" data-i18n="demo.typeLabel">Или напишите</label>
+              <input id="textField" type="text" data-i18n-placeholder="demo.placeholder" placeholder="…или напишите здесь" />
+              <button type="submit" class="send" aria-label="Отправить">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </form>
+          </div>
+
+          <div class="assistant-bottom">
+            <button class="btn btn-operator" id="operatorBtn">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13v-1a8 8 0 0 1 16 0v1" fill="none" stroke="currentColor" stroke-width="2"/><rect x="3" y="13" width="4" height="6" rx="1.5" fill="currentColor"/><rect x="17" y="13" width="4" height="6" rx="1.5" fill="currentColor"/></svg>
+              <span data-i18n="demo.operator">Позвать человека</span>
+            </button>
+            <button class="btn btn-sos" id="sosBtn">
+              <span aria-hidden="true">SOS</span>
+              <span data-i18n="demo.sos">Срочная помощь</span>
+            </button>
+          </div>
+          <p class="demo-note" data-i18n="demo.note">Это прототип: заказы и звонки имитируются, реальные сервисы не вызываются.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section class="section how">
+      <div class="container">
+        <h2 class="section-title" data-i18n="how.title">Как это работает</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-num">1</span>
+            <h3 data-i18n="how.s1t">Скажите своими словами</h3>
+            <p data-i18n="how.s1">«Вызови такси в поликлинику» или «Маған нан мен сүт керек». Без меню и кнопок.</p>
+          </li>
+          <li>
+            <span class="step-num">2</span>
+            <h3 data-i18n="how.s2t">Помощник уточнит и покажет</h3>
+            <p data-i18n="how.s2">Он помнит ваши адреса и любимые сервисы, называет цену и спрашивает подтверждение.</p>
+          </li>
+          <li>
+            <span class="step-num">3</span>
+            <h3 data-i18n="how.s3t">Ответьте «да» — готово</h3>
+            <p data-i18n="how.s3">Заказ оформлен. Если что-то пошло не так, к разговору подключится живой оператор.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ FEATURES ============ -->
+    <section class="section features" id="features">
+      <div class="container">
+        <h2 class="section-title" data-i18n="feat.title">Всё повседневное — в одном голосе</h2>
+        <p class="section-lead" data-i18n="feat.lead">Технология подстраивается под человека, а не человек под технологию.</p>
+        <div class="feature-grid">
+          <article class="feature">
+            <div class="f-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="12" y="4" width="8" height="15" rx="4"/><path d="M8 15a8 8 0 0 0 16 0M16 23v5" fill="none" stroke-width="2.5" stroke-linecap="round"/></svg></div>
+            <h3 data-i18n="feat.voice.t">Голосовое управление</h3>
+            <p data-i18n="feat.voice.d">Пользователь просто говорит, что ему нужно, а ИИ понимает запрос — даже если сказано не «по правилам».</p>
+          </article>
+          <article class="feature">
+            <div class="f-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 29s9-8.5 9-15a9 9 0 0 0-18 0c0 6.5 9 15 9 15z" fill="none" stroke-width="2.5"/><circle cx="16" cy="14" r="3.5"/></svg></div>
+            <h3 data-i18n="feat.mobility.t">Smart Mobility</h3>
+            <p data-i18n="feat.mobility.d">Навигация, поиск маршрутов на автобусе и помощь с заказом такси до привычных адресов.</p>
+          </article>
+          <article class="feature">
+            <div class="f-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M5 6h3l3 15h14l3-10H10" fill="none" stroke-width="2.5" stroke-linejoin="round"/><circle cx="13" cy="26" r="2"/><circle cx="23" cy="26" r="2"/></svg></div>
+            <h3 data-i18n="feat.home.t">Бытовые услуги</h3>
+            <p data-i18n="feat.home.d">Заказ продуктов и лекарств, уборка, вызов сантехника или электрика — у местных проверенных поставщиков.</p>
+          </article>
+          <article class="feature">
+            <div class="f-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 4l3.5 7.5L27 12.5l-5.5 5.5 1.5 8L16 22l-7 4 1.5-8L5 12.5l7.5-1z" fill="none" stroke-width="2.5" stroke-linejoin="round"/></svg></div>
+            <h3 data-i18n="feat.personal.t">Персонализация</h3>
+            <p data-i18n="feat.personal.d">Помнит привычные адреса, любимый магазин и предпочтения — только с согласия пользователя.</p>
+          </article>
+          <article class="feature">
+            <div class="f-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="11" r="5"/><path d="M6 28a10 10 0 0 1 20 0" fill="none" stroke-width="2.5" stroke-linecap="round"/></svg></div>
+            <h3 data-i18n="feat.human.t">Поддержка человека</h3>
+            <p data-i18n="feat.human.d">Если ИИ не может решить задачу, одной фразой подключается живой оператор.</p>
+          </article>
+          <article class="feature">
+            <div class="f-icon f-lang" aria-hidden="true"><span>Қ</span><span>Р</span></div>
+            <h3 data-i18n="feat.lang.t">Казахский и русский</h3>
+            <p data-i18n="feat.lang.d">Общение на привычном языке, включая смешанную речь — так, как говорят в Казахстане.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PRINCIPLE ============ -->
+    <section class="section principle" id="principle">
+      <div class="container">
+        <p class="eyebrow light" data-i18n="pr.eyebrow">Принцип INDEPENDENCE</p>
+        <h2 class="section-title light" data-i18n="pr.title">Проблема не в пожилых людях, а в сервисах</h2>
+        <p class="section-lead light" data-i18n="pr.lead">У пожилых людей не всегда есть время, желание и необходимость изучать десятки функций ради обычных бытовых задач. Существующие сервисы требуют адаптироваться к технологиям — мы делаем наоборот.</p>
+        <div class="compare">
+          <div class="compare-col compare-old">
+            <h3 data-i18n="pr.old">Как сейчас</h3>
+            <ul>
+              <li data-i18n="pr.o1">Отдельное приложение для такси, продуктов, аптеки, мастера</li>
+              <li data-i18n="pr.o2">Мелкие кнопки, регистрация, пароли, обучение</li>
+              <li data-i18n="pr.o3">Интерфейсы в основном на русском или английском</li>
+              <li data-i18n="pr.o4">«Позвоню дочке, пусть закажет» — и ждать ответа</li>
+            </ul>
+          </div>
+          <div class="compare-arrow" aria-hidden="true">→</div>
+          <div class="compare-col compare-new">
+            <h3 data-i18n="pr.new">С INDEPENDENT</h3>
+            <ul>
+              <li data-i18n="pr.n1">Один помощник для всех повседневных задач</li>
+              <li data-i18n="pr.n2">Достаточно говорить — учиться ничему не нужно</li>
+              <li data-i18n="pr.n3">Естественная казахская и русская речь</li>
+              <li data-i18n="pr.n4">Решаю сам, сразу — а в экстренной ситуации помощь не ждёт</li>
+            </ul>
+          </div>
+        </div>
+        <blockquote class="mission" data-i18n="pr.quote">«Мы не хотим создавать ещё одно приложение, которому пожилых людей придётся обучать. Мы делаем сервис, который экономит их время и силы и помогает сохранять самостоятельность.»</blockquote>
+      </div>
+    </section>
+
+    <!-- ============ FAMILY FREEDOM SETTINGS ============ -->
+    <section class="section family" id="family">
+      <div class="container family-grid">
+        <div class="family-copy">
+          <p class="eyebrow" data-i18n="fam.eyebrow">Family Freedom Settings</p>
+          <h2 class="section-title" data-i18n="fam.title">Близкие помогают один раз — дальше человек сам</h2>
+          <p class="section-lead" data-i18n="fam.lead">При первой настройке родственник добавляет важные адреса, контакты для экстренной связи, предпочтительные сервисы и лимит расходов. После этого пожилой человек управляет помощником самостоятельно.</p>
+          <div class="principle-box">
+            <h3 data-i18n="fam.keyT">Ключевой принцип</h3>
+            <p data-i18n="fam.key">Родственник не получает автоматический доступ ко всем действиям. Передача информации, просмотр заказов и подключение к помощи — только с согласия самого пользователя.</p>
+          </div>
+        </div>
+
+        <form class="settings" id="settingsForm" aria-label="Пример настройки">
+          <div class="settings-head">
+            <span data-i18n="fam.formTitle">Первичная настройка</span>
+            <span class="pill" data-i18n="fam.formPill">пример</span>
+          </div>
+
+          <fieldset>
+            <legend data-i18n="fam.addr">Важные адреса</legend>
+            <div class="row"><label for="addrHome" data-i18n="fam.home">Дом</label><input id="addrHome" value="ул. Абая, 10" /></div>
+            <div class="row"><label for="addrClinic" data-i18n="fam.clinic">Поликлиника</label><input id="addrClinic" value="Городская поликлиника №4" /></div>
+            <div class="row"><label for="addrKid" data-i18n="fam.kid">Дочь Айгерим</label><input id="addrKid" value="мкр. Самал-2, 25" /></div>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="fam.contacts">Экстренные контакты</legend>
+            <div class="row"><label for="cKid" data-i18n="fam.c1">Айгерим (дочь)</label><input id="cKid" value="+7 701 000 00 00" /></div>
+            <div class="row"><label for="cSon" data-i18n="fam.c2">Ерлан (сын)</label><input id="cSon" value="+7 702 000 00 00" /></div>
+          </fieldset>
+
+          <fieldset>
+            <legend data-i18n="fam.limit">Лимит расходов в неделю</legend>
+            <div class="range-row">
+              <input type="range" id="limitRange" min="5000" max="60000" step="1000" value="25000" />
+              <output id="limitOut">25 000 ₸</output>
+            </div>
+          </fieldset>
+
+          <fieldset class="consents">
+            <legend data-i18n="fam.consent">Что видят близкие — решает пользователь</legend>
+            <label class="switch"><input type="checkbox" id="consSOS" checked /><span class="slider"></span><span data-i18n="fam.s1">Сообщать близким при SOS</span></label>
+            <label class="switch"><input type="checkbox" id="consOrders" /><span class="slider"></span><span data-i18n="fam.s2">Показывать историю заказов</span></label>
+            <label class="switch"><input type="checkbox" id="consLocation" /><span class="slider"></span><span data-i18n="fam.s3">Делиться местоположением в поездке</span></label>
+            <label class="switch"><input type="checkbox" id="consMemory" checked /><span class="slider"></span><span data-i18n="fam.s4">Запоминать мои предпочтения</span></label>
+          </fieldset>
+
+          <p class="settings-note" id="settingsNote" data-i18n="fam.note">Изменения сразу применяются в демо-помощнике выше.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ UNIQUENESS ============ -->
+    <section class="section unique">
+      <div class="container">
+        <h2 class="section-title" data-i18n="un.title">Чем мы отличаемся</h2>
+        <p class="section-lead" data-i18n="un.lead">На мировом рынке есть похожие платформы, но три вещи делают INDEPENDENT другим.</p>
+        <div class="unique-grid">
+          <article class="u-card">
+            <span class="u-tag">01</span>
+            <h3 data-i18n="un.1t">Kazakhstan Native Voice AI</h3>
+            <p data-i18n="un.1">Помощник понимает естественную казахскую и русскую речь. Среди похожих решений мы не нашли ни одного с такой поддержкой.</p>
+          </article>
+          <article class="u-card">
+            <span class="u-tag">02</span>
+            <h3 data-i18n="un.2t">Family Freedom Settings</h3>
+            <p data-i18n="un.2">Семья помогает с настройкой, но не контролирует. Доступ к данным — только по согласию самого пользователя.</p>
+          </article>
+          <article class="u-card">
+            <span class="u-tag">03</span>
+            <h3 data-i18n="un.3t">Без обучения</h3>
+            <p data-i18n="un.3">Другие сервисы рассчитывают, что пользователь со временем научится. Нам это не нужно — достаточно говорить.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ IMPACT / PARTNERS ============ -->
+    <section class="section impact" id="partners">
+      <div class="container impact-grid">
+        <div>
+          <h2 class="section-title" data-i18n="im.title">Выгода и социальный эффект</h2>
+          <ul class="impact-list">
+            <li><span class="i-ico" aria-hidden="true">✓</span><span data-i18n="im.1">Меньше зависимости от родственников в бытовых вопросах</span></li>
+            <li><span class="i-ico" aria-hidden="true">✓</span><span data-i18n="im.2">Экономия времени и больше самостоятельности пожилых людей</span></li>
+            <li><span class="i-ico" aria-hidden="true">✓</span><span data-i18n="im.3">Дополнительный канал клиентов для местных поставщиков услуг</span></li>
+            <li><span class="i-ico" aria-hidden="true">✓</span><span data-i18n="im.4">Более доступная цифровая среда в Казахстане</span></li>
+          </ul>
+        </div>
+        <div class="partner-card">
+          <h3 data-i18n="im.pT">Вы — служба такси, магазин, клининг или мастер?</h3>
+          <p data-i18n="im.p">Подключитесь к INDEPENDENT и получайте заказы от аудитории, которая редко пользуется обычными приложениями.</p>
+          <form class="partner-form" id="partnerForm">
+            <label class="sr-only" for="partnerName" data-i18n="im.name">Название компании</label>
+            <input id="partnerName" required data-i18n-placeholder="im.name" placeholder="Название компании" />
+            <label class="sr-only" for="partnerPhone" data-i18n="im.phone">Телефон</label>
+            <input id="partnerPhone" type="tel" required data-i18n-placeholder="im.phone" placeholder="Телефон" />
+            <button class="btn btn-primary" type="submit" data-i18n="im.send">Оставить заявку</button>
+          </form>
+          <p class="partner-ok" id="partnerOk" hidden data-i18n="im.ok">Спасибо! Мы свяжемся с вами. (В прототипе заявка никуда не отправляется.)</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="logo logo-footer"><span class="logo-text">INDEPENDENT</span></div>
+      <p data-i18n="footer.text">Голосовой помощник для повседневной самостоятельности. Прототип, 2026.</p>
+    </div>
+  </footer>
+
+  <!-- Overlay for operator / SOS -->
+  <div class="overlay" id="overlay" hidden>
+    <div class="overlay-card" role="dialog" aria-modal="true" aria-labelledby="overlayTitle">
+      <div class="overlay-pulse" id="overlayPulse" aria-hidden="true"></div>
+      <h2 id="overlayTitle"></h2>
+      <p id="overlayText"></p>
+      <button class="btn btn-primary btn-lg" id="overlayClose" data-i18n="overlay.close">Закрыть</button>
+    </div>
+  </div>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
