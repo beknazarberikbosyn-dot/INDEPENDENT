@@ -1,9 +1,11 @@
 /* ==========================================================
-   INDEPENDENT — prototype logic
-   - UI language (RU / KK), text size, high contrast
-   - Voice assistant demo: Web Speech API (recognition + TTS)
-     with a rule-based intent engine for RU and KK speech
-   - Family Freedom Settings wired into the assistant
+   INDEPENDENT — mobile prototype logic
+   1. RU / KK speech recognition (Web Speech API) + auto language detection
+   2. AI assistant that understands a request and opens the right category
+   3. Services: taxi, groceries, route, home services (masters / cleaning)
+   4. Relative mode: the adult who registered the user sets contacts,
+      services and a monthly limit, and acts as a safety net
+      (help calls in order, approval of orders over the limit).
    All orders, calls and payments are simulated.
    ========================================================== */
 (function () {
@@ -12,597 +14,227 @@
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-  /* ---------------- Safe storage ---------------- */
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("ind." + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem("ind." + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+    get(k, d) { try { const v = localStorage.getItem("ind2." + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("ind2." + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
   };
 
-  /* ---------------- State ---------------- */
+  /* ==========================================================
+     State
+     ========================================================== */
+  const DEFAULTS = {
+    contacts: [
+      { id: "m", ru: "Мадина, дочь", kk: "Мадина, қызы", short: { ru: "Мадине", kk: "Мадинаға" }, phone: "+7 701 ··· ·· 21", av: "М", color: "salmon" },
+      { id: "e", ru: "Ерлан, сын", kk: "Ерлан, ұлы", short: { ru: "Ерлану", kk: "Ерланға" }, phone: "+7 777 ··· ·· 08", av: "Е", color: "blue" }
+    ],
+    services: { taxi: true, food: true, services: false },
+    limit: 20000,
+    spent: 12400,
+    askOverLimit: true,
+    seeOrders: false
+  };
+  const saved = store.get("settings", {});
   const state = {
     lang: store.get("lang", "ru"),
-    size: store.get("size", "1"),
-    contrast: store.get("contrast", false),
-    sound: store.get("sound", true),
-    pending: null,        // action waiting for "yes/no" or for a missing detail
-    spent: 4200,          // already spent this week (demo)
-    settings: Object.assign({
-      home: "ул. Абая, 10",
-      clinic: "Городская поликлиника №4",
-      kid: "мкр. Самал-2, 25",
-      cKid: "+7 701 000 00 00",
-      cSon: "+7 702 000 00 00",
-      limit: 25000,
-      consSOS: true,
-      consOrders: false,
-      consLocation: false,
-      consMemory: true
-    }, store.get("settings", {}))
+    screen: "home",
+    settings: Object.assign({}, DEFAULTS, saved, { services: Object.assign({}, DEFAULTS.services, saved.services || {}) }),
+    log: store.get("log", []),
+    taxi: { dest: "home", status: "draft", quote: null },
+    food: { items: null, status: "draft", quote: null },
+    route: { dest: "clinic", quote: null },
+    services: { kind: "plumber", status: "draft", quote: null }
   };
+  const save = () => { store.set("settings", state.settings); store.set("log", state.log.slice(0, 30)); };
 
-  const money = (n) => n.toLocaleString("ru-RU").replace(/ /g, " ") + " ₸";
-
-  /* ==========================================================
-     UI: language, text size, contrast
-     ========================================================== */
-  function t(key) {
-    const d = window.I18N[state.lang] || window.I18N.ru;
-    return d[key] != null ? d[key] : (window.I18N.ru[key] || key);
-  }
-
-  function applyLang() {
-    document.documentElement.lang = state.lang === "kk" ? "kk" : "ru";
-    $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
-    $$("[data-i18n-html]").forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
-    $$("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
-    $$("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
-    $$("[data-lang]").forEach((b) => {
-      const on = b.dataset.lang === state.lang;
-      b.classList.toggle("is-active", on);
-      b.setAttribute("aria-pressed", on);
-    });
-    renderChips();
-  }
-
-  function applySize() {
-    document.documentElement.dataset.size = state.size;
-    $$("[data-size]").forEach((b) => {
-      const on = b.dataset.size === state.size;
-      b.classList.toggle("is-active", on);
-      b.setAttribute("aria-pressed", on);
-    });
-  }
-
-  function applyContrast() {
-    if (state.contrast) document.documentElement.dataset.contrast = "high";
-    else delete document.documentElement.dataset.contrast;
-    $("#contrastBtn").setAttribute("aria-pressed", state.contrast);
-  }
-
-  $$("[data-lang]").forEach((b) => b.addEventListener("click", () => {
-    if (state.lang === b.dataset.lang) return;
-    state.lang = b.dataset.lang; store.set("lang", state.lang);
-    applyLang();
-    replyLang = state.lang;
-    say(L(
-      "Хорошо, теперь говорим по-русски. Чем помочь?",
-      "Жақсы, енді қазақша сөйлесеміз. Немен көмектесейін?"
-    ));
-  }));
-  $$("[data-size]").forEach((b) => b.addEventListener("click", () => {
-    state.size = b.dataset.size; store.set("size", state.size); applySize();
-  }));
-  $("#contrastBtn").addEventListener("click", () => {
-    state.contrast = !state.contrast; store.set("contrast", state.contrast); applyContrast();
-  });
+  const L = (ru, kk) => (state.lang === "kk" ? kk : ru);
+  const t = (key) => { const d = window.I18N[state.lang] || window.I18N.ru; return d[key] != null ? d[key] : (window.I18N.ru[key] || key); };
+  const money = (n) => n.toLocaleString("ru-RU").replace(/\s/g, " ") + " ₸";
+  const first = () => state.settings.contacts[0];
 
   /* ==========================================================
-     Assistant: language helpers
+     Data
      ========================================================== */
-  // Pick text by language. `lang` defaults to the language of the current reply.
-  let replyLang = state.lang;
-  function L(ru, kk, lang) { return (lang || replyLang) === "kk" ? kk : ru; }
+  const DEST = {
+    home:   { rx: /(дом|домой|үй)/i, ru: "Дом — ул. Сыганак, 21, кв. 34", kk: "Үй — Сығанақ к-сі, 21, 34-пәтер", chip: { ru: "Домой", kk: "Үйге" }, price: 1400, eta: 4, bus: 37, stop: { ru: "«Сыганак»", kk: "«Сығанақ»" } },
+    clinic: { rx: /(поликлиник|больниц|врач|клиник|емхана|аурухана|дәрігер)/i, ru: "Поликлиника №4 — ул. Кенесары, 8", kk: "№4 емхана — Кенесары к-сі, 8", chip: { ru: "В поликлинику", kk: "Емханаға" }, price: 1100, eta: 5, bus: 12, stop: { ru: "«Кенесары»", kk: "«Кенесары»" } },
+    kid:    { rx: /(доч|мадин|қызым|қызыма|қызға)/i, ru: "Мадина (дочь) — мкр. Самал-2, 25", kk: "Мадина (қызы) — Самал-2, 25", chip: { ru: "К дочери", kk: "Қызыма" }, price: 1900, eta: 6, bus: 92, stop: { ru: "«Самал»", kk: "«Самал»" } },
+    market: { rx: /(рын(ок|ку)|базар)/i, ru: "Зелёный базар — ул. Жибек Жолы, 53", kk: "Көк базар — Жібек жолы к-сі, 53", chip: { ru: "На базар", kk: "Базарға" }, price: 1600, eta: 7, bus: 63, stop: { ru: "«Зелёный базар»", kk: "«Көк базар»" } }
+  };
+  const ORIGIN = { ru: "пр. Кабанбай батыра, 12", kk: "Қабанбай батыр даңғ., 12" };
+  const HOME_SHORT = { ru: "Дом — ул. Сыганак, 21", kk: "Үй — Сығанақ к-сі, 21" };
 
-  // Detect whether an utterance is Kazakh (specific letters or common words)
-  // JS \b is ASCII-only, so word boundaries for Cyrillic are built by hand
   const LET = "a-zа-яёәғқңөұүһі";
   const NL = "[^" + LET + "]";
   const END = "(?![" + LET + "])";
 
-  function detectLang(text) {
-    const s = text.toLowerCase();
-    if (/[әғқңөұүһі]/.test(s)) return "kk";
-    if (new RegExp("(^|" + NL + ")(маған|керек|шақыр|бар|жоқ|иә|ия|сәлем|салем|рахмет|рақмет|қайда|үйге|қалай|нан|сүт)" + END).test(s)) return "kk";
-    if (/[а-яё]/.test(s)) return "ru";
-    return state.lang;
-  }
+  const ITEMS = [
+    { rx: new RegExp("(хлеб|(^|" + NL + ")нан" + END + ")", "i"), ru: "Хлеб", kk: "Нан", price: 250 },
+    { rx: /(молок|сүт)/i, ru: "Молоко 1 л", kk: "Сүт 1 л", price: 520 },
+    { rx: /(кефир|айран)/i, ru: "Кефир", kk: "Айран", price: 480 },
+    { rx: /(яйц|жұмыртқа)/i, ru: "Яйца, 10 шт", kk: "Жұмыртқа, 10 дана", price: 900 },
+    { rx: /(сахар|қант)/i, ru: "Сахар 1 кг", kk: "Қант 1 кг", price: 560 },
+    { rx: /(чай|шай)/i, ru: "Чай", kk: "Шай", price: 1300 },
+    { rx: /(масл|сары май)/i, ru: "Масло", kk: "Сары май", price: 1400 },
+    { rx: /(картош|картоп)/i, ru: "Картофель 2 кг", kk: "Картоп 2 кг", price: 600 },
+    { rx: /(яблок|алма)/i, ru: "Яблоки 1 кг", kk: "Алма 1 кг", price: 750 },
+    { rx: /(мяс|сиыр)/i, ru: "Говядина 1 кг", kk: "Сиыр еті 1 кг", price: 3800 },
+    { rx: /(курин|курица|тауық)/i, ru: "Курица", kk: "Тауық", price: 2200 },
+    { rx: /(рис|күріш)/i, ru: "Рис 1 кг", kk: "Күріш 1 кг", price: 700 }
+  ];
+  const USUAL = { 0: 1, 1: 1, 2: 1 }; // "as usual": bread, milk, kefir
+  const DELIVERY = 500;
+
+  const KINDS = {
+    plumber:  { rx: /(сантехник|кран|теч|протек|труб|унитаз|ағып|құбыр)/i, ru: "Сантехник", kk: "Сантехник", d: { ru: "кран, трубы", kk: "кран, құбыр" }, who: { ru: "Бауыржан, ★ 4.9", kk: "Бауыржан, ★ 4.9" }, when: { ru: "сегодня, 15:00–17:00", kk: "бүгін, 15:00–17:00" }, price: 3000, priceLbl: { ru: "Выезд и осмотр", kk: "Келу және қарау" } },
+    electric: { rx: /(электрик|розетк|свет|лампоч|электр|жарық)/i, ru: "Электрик", kk: "Электрик", d: { ru: "свет, розетки", kk: "жарық, розетка" }, who: { ru: "Азамат, ★ 4.8", kk: "Азамат, ★ 4.8" }, when: { ru: "сегодня, 17:00–19:00", kk: "бүгін, 17:00–19:00" }, price: 3000, priceLbl: { ru: "Выезд и осмотр", kk: "Келу және қарау" } },
+    cleaning: { rx: /(уборк|убрать|убраться|клининг|помыть|тазала|жинау|жинап)/i, ru: "Уборка", kk: "Тазалау", d: { ru: "«Таза Үй», 3 часа", kk: "«Таза Үй», 3 сағат" }, who: { ru: "Гульнара, ★ 5.0", kk: "Гүлнара, ★ 5.0" }, when: { ru: "завтра, 10:00", kk: "ертең, 10:00" }, price: 9000, priceLbl: { ru: "Стоимость", kk: "Бағасы" } },
+    handy:    { rx: /(мастер|почин|сломал|не работает|шебер|бұзыл|жөнде)/i, ru: "Мастер на все руки", kk: "Әмбебап шебер", d: { ru: "мебель, двери", kk: "жиһаз, есік" }, who: { ru: "Нурлан, ★ 4.9", kk: "Нұрлан, ★ 4.9" }, when: { ru: "завтра, 12:00–14:00", kk: "ертең, 12:00–14:00" }, price: 3500, priceLbl: { ru: "Выезд и осмотр", kk: "Келу және қарау" } }
+  };
+
+  const SERVICE_NAME = { taxi: { ru: "такси", kk: "такси" }, food: { ru: "продукты", kk: "азық-түлік" }, services: { ru: "бытовые услуги", kk: "тұрмыстық қызметтер" } };
 
   /* ==========================================================
-     Assistant: chat rendering
+     Language + navigation
      ========================================================== */
-  const chat = $("#chat");
-
-  function scrollChat() { chat.scrollTop = chat.scrollHeight; }
-
-  function addMsg(text, who, via) {
-    const el = document.createElement("div");
-    el.className = "msg msg-" + who;
-    el.textContent = text;
-    if (via) {
-      const v = document.createElement("span");
-      v.className = "via"; v.textContent = via;
-      el.appendChild(v);
-    }
-    chat.appendChild(el); scrollChat();
-    return el;
+  function applyLang() {
+    document.documentElement.lang = state.lang;
+    $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    $$("[data-i18n-aria]").forEach((el) => { el.setAttribute("aria-label", t(el.dataset.i18nAria)); });
+    $("#typeField").placeholder = t("type.ph");
+    $$("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === state.lang)));
+    setIdleHint();
+    render();
   }
-
-  function addTyping() {
-    const el = document.createElement("div");
-    el.className = "msg msg-bot";
-    el.innerHTML = '<span class="typing" aria-label="…"><i></i><i></i><i></i></span>';
-    chat.appendChild(el); scrollChat();
-    return el;
+  function setLang(lang) {
+    if (lang === state.lang) return;
+    state.lang = lang; store.set("lang", lang); applyLang();
   }
+  $$("[data-lang]").forEach((b) => b.addEventListener("click", () => {
+    setLang(b.dataset.lang);
+    speak(L("Хорошо, говорим по-русски.", "Жақсы, қазақша сөйлесеміз."));
+  }));
 
-  // card: { title, icon, rows: [[k, v]], total, kind: 'done'|'warn', confirm: true }
-  function addCard(card) {
-    const el = document.createElement("div");
-    el.className = "msg-card" + (card.kind ? " " + card.kind : "");
-    const h = document.createElement("h4");
-    h.textContent = (card.icon ? card.icon + " " : "") + card.title;
-    el.appendChild(h);
-    if (card.rows && card.rows.length) {
-      const dl = document.createElement("dl");
-      card.rows.forEach(([k, v]) => {
-        const dt = document.createElement("dt"); dt.textContent = k;
-        const dd = document.createElement("dd"); dd.textContent = v;
-        dl.append(dt, dd);
-      });
-      el.appendChild(dl);
-    }
-    if (card.total) {
-      const tot = document.createElement("div");
-      tot.className = "total";
-      tot.innerHTML = "<span></span><span></span>";
-      tot.children[0].textContent = card.total[0];
-      tot.children[1].textContent = card.total[1];
-      el.appendChild(tot);
-    }
-    if (card.confirm) {
-      const a = document.createElement("div");
-      a.className = "card-actions";
-      const yes = document.createElement("button");
-      yes.className = "btn btn-yes"; yes.textContent = L("Да, заказать", "Иә, тапсырыс беру");
-      const no = document.createElement("button");
-      no.className = "btn btn-no"; no.textContent = L("Нет", "Жоқ");
-      yes.addEventListener("click", () => handle(L("Да", "Иә"), "tap"));
-      no.addEventListener("click", () => handle(L("Нет", "Жоқ"), "tap"));
-      a.append(yes, no);
-      el.appendChild(a);
-    }
-    chat.appendChild(el); scrollChat();
-    return el;
+  function go(screen) {
+    const target = screen === "home" ? "" : screen;
+    if (location.hash.slice(1) !== target) location.hash = target;
+    else show(screen);
   }
-
-  function disableOldConfirms() {
-    $$(".card-actions", chat).forEach((a) => a.remove());
+  function show(screen) {
+    if (!$(`[data-screen="${screen}"]`)) screen = "home";
+    state.screen = screen;
+    $$("[data-screen]").forEach((s) => { s.hidden = s.dataset.screen !== screen; });
+    render();
+    const el = $(`[data-screen="${screen}"]`);
+    el.scrollTop = 0; window.scrollTo(0, 0);
+    if (screen === "home" && !listening) setIdleHint();
   }
+  window.addEventListener("hashchange", () => show(location.hash.slice(1) || "home"));
+  $$("[data-back]").forEach((b) => b.addEventListener("click", () => go("home")));
+  $$("[data-go]").forEach((b) => b.addEventListener("click", () => {
+    const s = b.dataset.go;
+    if (state[s] && "quote" in state[s]) state[s].quote = null;
+    if (s === "food" && !state.food.items) state.food.items = Object.assign({}, USUAL);
+    go(s);
+  }));
 
-  /* ---------------- Speech synthesis ---------------- */
-  function speak(text, lang) {
-    if (!state.sound || !("speechSynthesis" in window)) return;
+  /* ==========================================================
+     Speech: synthesis
+     ========================================================== */
+  function speak(text) {
+    if (!("speechSynthesis" in window)) return;
     try {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      const code = lang === "kk" ? "kk-KZ" : "ru-RU";
+      const code = state.lang === "kk" ? "kk-KZ" : "ru-RU";
       u.lang = code;
-      const voices = window.speechSynthesis.getVoices();
-      const v = voices.find((x) => x.lang === code) ||
-                voices.find((x) => x.lang && x.lang.startsWith(lang === "kk" ? "kk" : "ru"));
+      const vs = window.speechSynthesis.getVoices();
+      const v = vs.find((x) => x.lang === code) || vs.find((x) => x.lang && x.lang.startsWith(state.lang));
       if (v) u.voice = v;
       u.rate = 0.92;
       window.speechSynthesis.speak(u);
     } catch (e) { /* ignore */ }
   }
 
-  function say(text, lang) {
-    addMsg(text, "bot");
-    speak(text, lang || replyLang);
+  let toastTimer;
+  function toast(text, ms) {
+    const el = $("#toast");
+    el.textContent = text; el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, ms || 3200);
   }
-
-  const soundBtn = $("#soundBtn");
-  soundBtn.setAttribute("aria-pressed", state.sound);
-  soundBtn.addEventListener("click", () => {
-    state.sound = !state.sound; store.set("sound", state.sound);
-    soundBtn.setAttribute("aria-pressed", state.sound);
-    if (!state.sound && "speechSynthesis" in window) window.speechSynthesis.cancel();
-  });
 
   /* ==========================================================
-     Assistant: intent engine
+     Home: sun rays, waveform, hint
      ========================================================== */
-  const RX = {
-    yes: new RegExp("^(да|давай|ага|угу|подтверждаю|конечно|заказывай|верно|иә|ия|йә|жарайды|болады|дұрыс|ok|ок|окей)" + END, "i"),
-    no: /^(нет|не надо|не нужно|отмена|отмени|стоп|жоқ|керек емес|қажет емес|тоқтат|болдырма)/i,
-    sos: /(плохо|скор(ая|ую)|помогите|спасите|упал|болит сердце|sos|сос|жедел|жаным ауыр|құтқар|құлап|жүрегім)/i,
-    operator: /(оператор|человек|живой|живого|адаммен|адам шақыр|маман|тірі)/i,
-    call: /(позвон|набери|созвон|связаться с|қоңырау|хабарлас|звонок)/i,
-    taxi: /(такси|поехать|поеду|отвез|довез|жеткіз|апар|көлік|барғым)/i,
-    route: /(маршрут|автобус|как добраться|как доехать|остановк|навигац|бағыт|қалай бар|аялдама|жол көрсет)/i,
-    pharmacy: /(аптек|лекарств|таблет|дәрі|дәріхана)/i,
-    groceries: new RegExp("(продукт|хлеб|молок|магазин|покупк|яйц|кефир|азық|сүт|дүкен|тамақ|жұмыртқа|айран|(^|" + NL + ")нан" + END + ")", "i"),
-    cleaning: /(уборк|убрать|убраться|клининг|помыть|тазала|жинау|жинап)/i,
-    master: /(мастер|сантехник|электрик|кран|теч[её]т|протека|розетк|сломал|не работает|починит|шебер|бұзыл|ағып|жөнде)/i,
-    hello: /(привет|здравств|добрый|сәлем|салем|ассалау|қайырлы)/i,
-    help: /(что ты умеешь|что умеешь|помощь|не істей аласың|не істейсің|көмек керек)/i,
-    thanks: /(спасибо|благодар|рахмет|рақмет|сау бол)/i
+  (function drawSun() {
+    const g = $("#rays");
+    const n = 36;
+    let html = "";
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const r1 = 74, r2 = i % 2 ? 98 : 112;
+      const x1 = 120 + Math.cos(a) * r1, y1 = 120 + Math.sin(a) * r1;
+      const x2 = 120 + Math.cos(a) * r2, y2 = 120 + Math.sin(a) * r2;
+      html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>`;
+    }
+    g.innerHTML = html;
+    const w = $("#wave");
+    [14, 26, 38, 22, 44, 30, 18, 40, 24, 34, 16].forEach((h, i) => {
+      const b = document.createElement("i");
+      b.style.height = h + "px";
+      b.style.animationDelay = (i * 0.08) + "s";
+      w.appendChild(b);
+    });
+  })();
+
+  const EXAMPLES = {
+    ru: ["Вызови такси домой", "Закажи продукты как обычно", "Как доехать до поликлиники?", "Течёт кран, нужен мастер"],
+    kk: ["Үйге такси шақыр", "Маған нан мен сүт керек", "Емханаға қалай барамын?", "Кран ағып тұр"]
   };
-
-  const DEST = [
-    { key: "home",   rx: /(дом|домой|үй)/i,                                          ru: "Дом",           kk: "Үй" },
-    { key: "clinic", rx: /(поликлиник|больниц|врач|клиник|емхана|аурухана|дәрігер)/i, ru: "Поликлиника",   kk: "Емхана" },
-    { key: "kid",    rx: /(доч|айгерим|айгерім|қызым|қызыма|қызға)/i,               ru: "Дочь Айгерим",  kk: "Қызы Айгерім" },
-    { key: "market", rx: /(рын(ок|ку)|базар)/i,                                       ru: "Зелёный базар", kk: "Көк базар", addr: "Зелёный базар" }
-  ];
-
-  function findDest(text) {
-    // the most specific match wins; "home" only if nothing else
-    const hits = DEST.filter((d) => d.rx.test(text));
-    return hits.find((d) => d.key !== "home") || hits[0] || null;
+  let exIdx = 0, exTimer = null;
+  const hint = $("#hint");
+  function setIdleHint() {
+    hint.classList.remove("reply");
+    const ex = EXAMPLES[state.lang][exIdx % 4];
+    hint.textContent = "";
+    hint.append(L("Нажмите и скажите: ", "Басып, айтыңыз: "));
+    const q = document.createElement("q");
+    q.textContent = ex;
+    hint.append(q);
   }
-  function destAddr(d) { return d.addr || state.settings[d.key] || d.ru; }
-  function destName(d) { return L(d.ru, d.kk); }
-
-  const ITEMS = [
-    { rx: new RegExp("(хлеб|(^|" + NL + ")нан" + END + ")", "i"),               ru: "Хлеб",          kk: "Нан",        price: 250 },
-    { rx: /(молок|сүт)/i,              ru: "Молоко 1 л",    kk: "Сүт 1 л",    price: 520 },
-    { rx: /(кефир|айран)/i,            ru: "Кефир",         kk: "Айран",      price: 480 },
-    { rx: /(яйц|жұмыртқа)/i,           ru: "Яйца, 10 шт",   kk: "Жұмыртқа, 10 дана", price: 900 },
-    { rx: /(сахар|қант)/i,             ru: "Сахар 1 кг",    kk: "Қант 1 кг",  price: 560 },
-    { rx: /(чай|шай)/i,                ru: "Чай",           kk: "Шай",        price: 1300 },
-    { rx: /(масл|сары май)/i,          ru: "Масло",         kk: "Сары май",   price: 1400 },
-    { rx: /(картош|картоп)/i,          ru: "Картофель 2 кг", kk: "Картоп 2 кг", price: 600 },
-    { rx: /(яблок|алма)/i,             ru: "Яблоки 1 кг",   kk: "Алма 1 кг",  price: 750 },
-    { rx: /(мяс|сиыр)/i,          ru: "Говядина 1 кг", kk: "Сиыр еті 1 кг", price: 3800 },
-    { rx: /(курин|курица|тауық)/i,     ru: "Курица",        kk: "Тауық",      price: 2200 },
-    { rx: /(рис|күріш)/i,              ru: "Рис 1 кг",      kk: "Күріш 1 кг", price: 700 }
-  ];
-  const USUAL_BASKET = [0, 1, 2]; // "as usual": bread, milk, kefir
-
-  function rand(a, b) { return Math.round(a + Math.random() * (b - a)); }
-
-  function handle(rawText, via) {
-    const text = (rawText || "").trim();
-    if (!text) return;
-    replyLang = detectLang(text);
-    addMsg(text, "user", via === "voice" ? L("🎤 голосом", "🎤 дауыспен") : null);
-    disableOldConfirms();
-    const typing = addTyping();
-    setTimeout(() => { typing.remove(); respond(text); renderChips(); }, 650);
+  function cycleHints() {
+    clearInterval(exTimer);
+    exTimer = setInterval(() => { if (!listening && !hint.classList.contains("reply")) { exIdx++; setIdleHint(); } }, 4500);
   }
+  function setReply(text) { hint.classList.add("reply"); hint.textContent = text; }
 
-  function respond(text) {
-    const s = text.toLowerCase();
-    const p = state.pending;
-
-    // 1) Emergency always first
-    if (RX.sos.test(s)) { state.pending = null; return doSOS(); }
-    if (RX.operator.test(s)) { state.pending = null; return doOperator(); }
-
-    // 2) Waiting for confirmation?
-    if (p && p.type === "confirm") {
-      if (RX.yes.test(s)) { state.pending = null; return p.onYes(); }
-      if (RX.no.test(s))  { state.pending = null; return say(L("Хорошо, отменила. Что-нибудь ещё?", "Жарайды, тоқтаттым. Тағы не керек?")); }
-    }
-    // 3) Waiting for a missing detail (e.g. destination)?
-    if (p && p.type === "askDest") {
-      const d = findDest(s);
-      if (d) { state.pending = null; return p.kind === "route" ? doRoute(d) : doTaxi(d); }
-    }
-
-    // 4) Intents
-    if (RX.call.test(s)) return doCall(s);
-    if (RX.route.test(s)) { const d = findDest(s); return d ? doRoute(d) : askDest("route"); }
-    if (RX.taxi.test(s))  { const d = findDest(s); return d ? doTaxi(d)  : askDest("taxi"); }
-    if (RX.pharmacy.test(s)) return doPharmacy();
-    if (RX.groceries.test(s)) return doGroceries(s);
-    if (RX.cleaning.test(s)) return doCleaning();
-    if (RX.master.test(s)) return doMaster(s);
-    if (RX.thanks.test(s)) return say(L("Пожалуйста! Обращайтесь в любое время.", "Оқасы жоқ! Кез келген уақытта айтыңыз."));
-    if (RX.hello.test(s) || RX.help.test(s)) return doHelp();
-
-    // A bare place name: assume taxi
-    const d = findDest(s);
-    if (d) return doTaxi(d);
-
-    return say(L(
-      "Простите, я не совсем поняла. Скажите по-другому — например, «вызови такси домой». Или нажмите «Позвать человека».",
-      "Кешіріңіз, толық түсінбедім. Басқаша айтып көріңіз — мысалы, «үйге такси шақыр». Немесе «Адамды шақыру» батырмасын басыңыз."
-    ));
-  }
-
-  function confirm(onYes) { state.pending = { type: "confirm", onYes }; }
-
-  function askDest(kind) {
-    state.pending = { type: "askDest", kind };
-    say(L("Куда нужно поехать? Например: домой, в поликлинику, к дочери, на базар.",
-          "Қайда бару керек? Мысалы: үйге, емханаға, қызыңызға, базарға."));
-  }
-
-  function overLimit(sum) { return state.spent + sum > state.settings.limit; }
-  function limitWarn(sum) {
-    const left = Math.max(0, state.settings.limit - state.spent);
-    addCard({
-      kind: "warn", icon: "⚠️",
-      title: L("Сумма больше недельного лимита", "Сома апталық лимиттен асады"),
-      rows: [
-        [L("Заказ", "Тапсырыс"), money(sum)],
-        [L("Осталось до лимита", "Лимитке дейін қалды"), money(left)]
-      ]
-    });
-    say(L("Этот заказ превышает лимит, который вы установили. Могу убрать часть позиций или позвать оператора.",
-          "Бұл тапсырыс сіз белгілеген лимиттен асады. Кейбір тауарларды алып тастай аламын немесе операторды шақырайын."));
-  }
-  function privacyLine(kind) {
-    const s = state.settings;
-    if (kind === "trip") return s.consLocation ? L("Айгерим увидит, где вы едете — вы это разрешили.", "Айгерім сапарыңызды көреді — сіз рұқсат бердіңіз.")
-                                               : L("Поездку видите только вы.", "Сапарды тек сіз көресіз.");
-    return s.consOrders ? L("Заказ появится в истории, которую видят близкие.", "Тапсырыс жақындарыңыз көретін тарихта шығады.")
-                        : L("Заказ видите только вы.", "Тапсырысты тек сіз көресіз.");
-  }
-
-  /* ---------------- Actions ---------------- */
-  function doHelp() {
-    say(L(
-      "Здравствуйте, Роза апа! Я могу вызвать такси, подсказать автобус, заказать продукты или лекарства, вызвать мастера или уборку, позвонить близким. Просто скажите, что нужно.",
-      "Сәлеметсіз бе, Роза апа! Мен такси шақыра аламын, автобус бағытын айтамын, азық-түлік не дәрі-дәрмек, шебер не тазалау шақырамын, жақындарыңызға қоңырау шаламын. Не керегін айтыңыз."
-    ));
-  }
-
-  function doTaxi(d) {
-    // Demo assumption: when going home, the user is at the clinic
-    const from = d.key === "home" ? state.settings.clinic : state.settings.home;
-    const price = rand(1200, 2200);
-    const eta = rand(4, 9);
-    if (overLimit(price)) return limitWarn(price);
-    addCard({
-      icon: "🚕", title: L("Такси", "Такси"),
-      rows: [
-        [L("Откуда", "Қайдан"), from],
-        [L("Куда", "Қайда"), destName(d) + " — " + destAddr(d)],
-        [L("Подача", "Келеді"), L(eta + " мин", eta + " мин")],
-        [L("Оплата", "Төлем"), L("наличными водителю", "жүргізушіге қолма-қол")]
-      ],
-      total: [L("Примерно", "Шамамен"), money(price)],
-      confirm: true
-    });
-    say(L(`Нашла такси до места «${destName(d)}», примерно ${price} тенге, приедет через ${eta} минут. Заказать?`,
-          `«${destName(d)}» дейін такси таптым, шамамен ${price} теңге, ${eta} минутта келеді. Тапсырыс берейін бе?`));
-    confirm(() => {
-      state.spent += price;
-      addCard({
-        kind: "done", icon: "✅", title: L("Такси заказано", "Такси шақырылды"),
-        rows: [
-          [L("Водитель", "Жүргізуші"), L("Нурлан", "Нұрлан")],
-          [L("Машина", "Көлік"), L("белая Toyota Camry", "ақ Toyota Camry")],
-          [L("Номер", "Нөмірі"), "777 ABC 02"],
-          [L("Приедет через", "Келеді"), eta + L(" мин", " минутта")]
-        ]
-      });
-      say(L(`Готово. Белая Тойота, водитель Нурлан, будет через ${eta} минут. ${privacyLine("trip")}`,
-            `Дайын. Ақ Тойота, жүргізуші Нұрлан, ${eta} минутта келеді. ${privacyLine("trip")}`));
-    });
-  }
-
-  function doRoute(d) {
-    const bus = [12, 32, 37, 63, 92][rand(0, 4)];
-    const stops = rand(3, 7);
-    const wait = rand(3, 11);
-    addCard({
-      icon: "🚌", title: L("Маршрут на автобусе", "Автобус бағыты"),
-      rows: [
-        [L("Куда", "Қайда"), destName(d) + " — " + destAddr(d)],
-        [L("Автобус", "Автобус"), "№" + bus],
-        [L("Остановка", "Аялдама"), L("«Абая» — 3 минуты пешком", "«Абай» — жаяу 3 минут")],
-        [L("Ехать", "Жол"), L(stops + " остановок, ~" + stops * 4 + " мин", stops + " аялдама, ~" + stops * 4 + " мин")],
-        [L("Ближайший", "Келесісі"), L("через " + wait + " мин", wait + " минуттан кейін")]
-      ]
-    });
-    say(L(`Автобус номер ${bus} от остановки «Абая», ${stops} остановок. Ближайший через ${wait} минут. Если не хочется ждать — скажите «вызови такси».`,
-          `«Абай» аялдамасынан ${bus}-нөмірлі автобус, ${stops} аялдама. Келесісі ${wait} минуттан кейін. Күткіңіз келмесе — «такси шақыр» деңіз.`));
-  }
-
-  function doGroceries(s) {
-    let picked = ITEMS.filter((it) => it.rx.test(s));
-    let usual = false;
-    if (!picked.length) {
-      if (!state.settings.consMemory) {
-        return say(L("Что именно купить? Например: хлеб, молоко, яйца.",
-                     "Нақты не алу керек? Мысалы: нан, сүт, жұмыртқа."));
-      }
-      picked = USUAL_BASKET.map((i) => ITEMS[i]);
-      usual = true;
-    }
-    const delivery = 500;
-    const sum = picked.reduce((a, it) => a + it.price, 0) + delivery;
-    if (overLimit(sum)) return limitWarn(sum);
-    addCard({
-      icon: "🛒", title: L("Продукты — магазин «Достық» у дома", "Азық-түлік — үй жанындағы «Достық» дүкені"),
-      rows: picked.map((it) => [L(it.ru, it.kk), money(it.price)])
-        .concat([[L("Доставка", "Жеткізу"), money(delivery) + L(", ~40 мин", ", ~40 мин")]]),
-      total: [L("Итого", "Барлығы"), money(sum)],
-      confirm: true
-    });
-    say(usual
-      ? L(`Заказать как обычно: хлеб, молоко и кефир, с доставкой ${sum} тенге?`,
-          `Әдеттегідей тапсырыс берейін бе: нан, сүт және айран, жеткізумен ${sum} теңге?`)
-      : L(`Собрала корзину на ${sum} тенге с доставкой. Заказать?`,
-          `Себетті жеткізумен ${sum} теңгеге жинадым. Тапсырыс берейін бе?`));
-    confirm(() => {
-      state.spent += sum;
-      addCard({ kind: "done", icon: "✅", title: L("Заказ принят", "Тапсырыс қабылданды"),
-        rows: [[L("Привезут", "Әкеледі"), L("примерно через 40 минут", "шамамен 40 минуттан кейін")],
-               [L("Адрес", "Мекенжай"), state.settings.home],
-               [L("Оплата", "Төлем"), L("курьеру при получении", "алған кезде курьерге")]] });
-      say(L(`Заказ принят, привезут примерно через 40 минут. ${privacyLine("order")}`,
-            `Тапсырыс қабылданды, шамамен 40 минутта әкеледі. ${privacyLine("order")}`));
-    });
-  }
-
-  function doPharmacy() {
-    addCard({
-      icon: "💊", title: L("Аптека рядом с домом", "Үй жанындағы дәріхана"),
-      rows: [
-        [L("Доставка", "Жеткізу"), L("~50 мин, 600 ₸", "~50 мин, 600 ₸")],
-        [L("Как заказать", "Қалай"), L("фармацевт перезвонит и уточнит список", "фармацевт қайта қоңырау шалып, тізімді нақтылайды")]
-      ],
-      confirm: true
-    });
-    say(L("Чтобы не ошибиться с лекарствами, фармацевт сам перезвонит вам и уточнит, что нужно. Соединить?",
-          "Дәріден қателеспеу үшін фармацевт өзі сізге қоңырау шалып, не керегін нақтылайды. Қоссам ба?"));
-    confirm(() => {
-      addCard({ kind: "done", icon: "✅", title: L("Заявка в аптеку отправлена", "Дәріханаға өтінім жіберілді"),
-        rows: [[L("Звонок", "Қоңырау"), L("в течение 10 минут", "10 минут ішінде")]] });
-      say(L("Готово. Фармацевт позвонит в течение десяти минут.", "Дайын. Фармацевт он минут ішінде қоңырау шалады."));
-    });
-  }
-
-  function doCleaning() {
-    const price = 9000;
-    if (overLimit(price)) return limitWarn(price);
-    addCard({
-      icon: "🧹", title: L("Уборка квартиры — «Таза Үй»", "Пәтер тазалау — «Таза Үй»"),
-      rows: [
-        [L("Когда", "Қашан"), L("завтра в 10:00", "ертең сағат 10:00-де")],
-        [L("Длительность", "Ұзақтығы"), L("около 3 часов", "шамамен 3 сағат")],
-        [L("Адрес", "Мекенжай"), state.settings.home]
-      ],
-      total: [L("Стоимость", "Бағасы"), money(price)],
-      confirm: true
-    });
-    say(L(`Уборка завтра в десять утра, ${price} тенге. Записать?`, `Тазалау ертең таңғы оныда, ${price} теңге. Жазып қойайын ба?`));
-    confirm(() => {
-      state.spent += price;
-      addCard({ kind: "done", icon: "✅", title: L("Уборка заказана", "Тазалауға жазылдыңыз"),
-        rows: [[L("Мастер", "Маман"), L("Гульнара, позвонит за час", "Гүлнара, бір сағат бұрын қоңырау шалады")]] });
-      say(L(`Записала. Гульнара позвонит за час до прихода. ${privacyLine("order")}`,
-            `Жаздым. Гүлнара келерден бір сағат бұрын қоңырау шалады. ${privacyLine("order")}`));
-    });
-  }
-
-  function doMaster(s) {
-    let kind = L("Мастер на все руки", "Әмбебап шебер");
-    if (/(кран|теч|протек|труб|унитаз|ағып|құбыр)/i.test(s)) kind = L("Сантехник", "Сантехник");
-    else if (/(розетк|свет|электр|лампоч|жарық|розетка)/i.test(s)) kind = L("Электрик", "Электрик");
-    const fee = 3000;
-    if (overLimit(fee)) return limitWarn(fee);
-    addCard({
-      icon: "🔧", title: kind,
-      rows: [
-        [L("Когда", "Қашан"), L("сегодня, 15:00–17:00", "бүгін, 15:00–17:00")],
-        [L("Мастер", "Шебер"), L("Серик, рейтинг 4.9", "Серік, рейтингі 4.9")],
-        [L("Адрес", "Мекенжай"), state.settings.home]
-      ],
-      total: [L("Выезд и осмотр", "Келу және қарау"), money(fee)],
-      confirm: true
-    });
-    say(L(`${kind} может приехать сегодня с трёх до пяти. Выезд ${fee} тенге, работу мастер назовёт на месте. Вызвать?`,
-          `${kind} бүгін үштен беске дейін келе алады. Келу ${fee} теңге, жұмыс бағасын шебер орнында айтады. Шақырайын ба?`));
-    confirm(() => {
-      state.spent += fee;
-      addCard({ kind: "done", icon: "✅", title: L("Мастер вызван", "Шебер шақырылды"),
-        rows: [[L("Приедет", "Келеді"), L("сегодня 15:00–17:00", "бүгін 15:00–17:00")]] });
-      say(L("Мастер вызван. Он позвонит перед приездом.", "Шебер шақырылды. Келер алдында қоңырау шалады."));
-    });
-  }
-
-  function doCall(s) {
-    const son = /(сын|ерлан|ұлым|ұлыма|ұлыма)/i.test(s);
-    const who = son ? L("Ерлану", "Ерланға") : L("Айгерим", "Айгерімге");
-    const num = son ? state.settings.cSon : state.settings.cKid;
-    say(L(`Звоню ${who}.`, `${who} қоңырау шалып жатырмын.`));
-    showOverlay(L("Звоним " + who + "…", who + " қоңырау шалынуда…"), num + "  ·  " + L("(имитация звонка)", "(қоңырау имитациясы)"), false);
-  }
-
-  function doOperator() {
-    say(L("Соединяю с оператором. Это живой человек, он поможет.", "Операторға қосып жатырмын. Ол — тірі адам, көмектеседі."));
-    showOverlay(L("Соединяем с оператором", "Операторға қосылуда"),
-      L("Оператор Алия ответит примерно через минуту. Она видит, о чём вы говорили с помощником, — повторять не нужно.",
-        "Оператор Әлия шамамен бір минутта жауап береді. Ол көмекшімен не туралы сөйлескеніңізді көреді — қайталаудың қажеті жоқ."), false);
-  }
-
-  function doSOS() {
-    const notify = state.settings.consSOS;
-    say(L("Вызываю срочную помощь. Оставайтесь на месте, я рядом.", "Шұғыл көмек шақырып жатырмын. Орныңыздан қозғалмаңыз, мен осындамын."));
-    showOverlay(L("Вызываем помощь", "Көмек шақырылуда"),
-      L("В рабочей версии: звонок в скорую 103 / 112 и оператору. ", "Жұмыс нұсқасында: жедел жәрдем 103 / 112 және операторға қоңырау. ") +
-      (notify ? L("Айгерим и Ерлан получат сообщение и ваш адрес.", "Айгерім мен Ерлан хабарлама мен мекенжайыңызды алады.")
-              : L("Близким сообщение не отправляется — вы это отключили.", "Жақындарға хабарлама жіберілмейді — сіз мұны өшірдіңіз.")),
-      true);
-  }
-
-  /* ---------------- Overlay ---------------- */
-  const overlay = $("#overlay");
-  let lastFocus = null;
-  function showOverlay(title, text, sos) {
-    lastFocus = document.activeElement;
-    $("#overlayTitle").textContent = title;
-    $("#overlayText").textContent = text;
-    $("#overlayPulse").classList.toggle("sos", !!sos);
-    $("#overlayClose").textContent = t("overlay.close");
-    overlay.hidden = false;
-    $("#overlayClose").focus();
-  }
-  function hideOverlay() { overlay.hidden = true; if (lastFocus) lastFocus.focus(); }
-  $("#overlayClose").addEventListener("click", hideOverlay);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) hideOverlay(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !overlay.hidden) hideOverlay(); });
-
-  $("#operatorBtn").addEventListener("click", () => handle(L("Позови оператора", "Операторды шақыр", state.lang), "tap"));
-  $("#sosBtn").addEventListener("click", () => { replyLang = state.lang; doSOS(); });
-
-  /* ---------------- Suggestion chips ---------------- */
-  function renderChips() {
-    const box = $("#chips");
-    box.innerHTML = "";
-    let list;
-    const kk = state.lang === "kk";
-    if (state.pending && state.pending.type === "confirm") {
-      list = kk ? ["Иә", "Жоқ"] : ["Да", "Нет"];
-    } else if (state.pending && state.pending.type === "askDest") {
-      list = kk ? ["Үйге", "Емханаға", "Қызыма", "Базарға"] : ["Домой", "В поликлинику", "К дочери", "На базар"];
-    } else {
-      list = kk
-        ? ["Емханаға такси шақыр", "Маған нан мен сүт керек", "Кран ағып тұр", "Қызыма қоңырау шал"]
-        : ["Вызови такси в поликлинику", "Закажи продукты как обычно", "Как доехать до базара?", "Течёт кран, нужен мастер"];
-    }
-    list.forEach((txt) => {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "chip"; b.textContent = txt;
-      b.addEventListener("click", () => handle(txt, "tap"));
-      box.appendChild(b);
-    });
-  }
-
-  /* ---------------- Text input ---------------- */
-  $("#textForm").addEventListener("submit", (e) => {
+  /* Text fallback */
+  $("#typeToggle").addEventListener("click", () => {
+    const f = $("#typeForm");
+    f.hidden = !f.hidden;
+    if (!f.hidden) $("#typeField").focus();
+  });
+  $("#typeForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    const f = $("#textField");
-    handle(f.value, "text");
+    const f = $("#typeField");
+    if (f.value.trim()) understand(f.value, false);
     f.value = "";
   });
 
-  /* ---------------- Speech recognition ---------------- */
+  /* ==========================================================
+     Speech: recognition (RU / KK)
+     ========================================================== */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const micBtn = $("#micBtn");
-  const micHint = $("#micHint");
-  let rec = null, listening = false;
+  let rec = null, listening = false, listenBtn = null;
 
-  function setHint(key) { micHint.dataset.i18n = key; micHint.textContent = t(key); }
-
-  micBtn.addEventListener("click", () => {
-    if (!SR) { setHint("demo.noMic"); $("#textField").focus(); return; }
+  function listen(btn) {
+    if (!SR) {
+      toast(L("Этот браузер не распознаёт речь — напишите текстом (лучше всего Chrome).",
+              "Бұл браузер сөзді танымайды — мәтінмен жазыңыз (Chrome жақсы)."), 4200);
+      if (state.screen !== "home") go("home");
+      $("#typeForm").hidden = false; $("#typeField").focus();
+      return;
+    }
     if (listening && rec) { rec.stop(); return; }
     try {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -611,74 +243,531 @@
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       let finalText = "";
-      rec.onstart = () => { listening = true; micBtn.classList.add("is-listening"); setHint("demo.listening"); };
+      listenBtn = btn;
+      rec.onstart = () => {
+        listening = true; btn.classList.add("is-listening"); $("#wave").classList.add("on");
+        if (state.screen === "home") setReply(L("Слушаю… говорите", "Тыңдап тұрмын… айтыңыз"));
+        else setQuote(L("Слушаю…", "Тыңдап тұрмын…"));
+      };
       rec.onresult = (e) => {
         let interim = "";
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const r = e.results[i];
           if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
         }
-        micHint.textContent = (finalText + interim) || t("demo.listening");
+        const live = finalText + interim;
+        if (!live) return;
+        if (state.screen === "home") setReply("«" + live + "»"); else setQuote("«" + live + "»");
       };
       rec.onerror = (e) => {
-        if (e.error === "not-allowed" || e.error === "service-not-allowed") setHint("demo.noMic");
+        if (e.error === "not-allowed" || e.error === "service-not-allowed")
+          toast(L("Нет доступа к микрофону. Разрешите его в браузере или напишите текстом.", "Микрофонға рұқсат жоқ. Браузерде рұқсат беріңіз не мәтінмен жазыңыз."), 4200);
+        else if (e.error === "language-not-supported")
+          toast(L("Казахский голос недоступен в этом браузере — переключитесь на РУС или пишите текстом.", "Бұл браузерде қазақ тілі жоқ — РУС таңдаңыз не мәтінмен жазыңыз."), 4200);
       };
       rec.onend = () => {
-        listening = false; micBtn.classList.remove("is-listening");
-        setHint("demo.hint");
-        if (finalText.trim()) handle(finalText, "voice");
+        listening = false; btn.classList.remove("is-listening"); $("#wave").classList.remove("on");
+        if (finalText.trim()) understand(finalText, true);
+        else if (state.screen === "home") setIdleHint();
+        else render();
       };
       rec.start();
-    } catch (err) { setHint("demo.noMic"); }
-  });
+    } catch (err) {
+      toast(L("Не удалось включить микрофон.", "Микрофон қосылмады."));
+    }
+  }
+  $("#micBtn").addEventListener("click", (e) => listen(e.currentTarget));
+  $$("[data-mic]").forEach((b) => b.addEventListener("click", () => listen(b)));
 
-  /* ==========================================================
-     Family Freedom Settings form
-     ========================================================== */
-  const textFields = ["home", "clinic", "kid", "cKid", "cSon"];
-  const fieldIds = { home: "addrHome", clinic: "addrClinic", kid: "addrKid", cKid: "cKid", cSon: "cSon" };
-  const checks = ["consSOS", "consOrders", "consLocation", "consMemory"];
-  const note = $("#settingsNote");
-  let noteTimer;
-
-  function flashSaved() {
-    store.set("settings", state.settings);
-    note.textContent = t("fam.saved"); note.classList.add("flash");
-    clearTimeout(noteTimer);
-    noteTimer = setTimeout(() => { note.textContent = t("fam.note"); note.classList.remove("flash"); }, 2200);
+  function setQuote(text) {
+    const el = $(`[data-quote="${state.screen}"]`);
+    if (el) el.textContent = text;
   }
 
-  textFields.forEach((k) => {
-    const el = document.getElementById(fieldIds[k]);
-    el.value = state.settings[k];
-    el.addEventListener("input", () => { state.settings[k] = el.value.trim() || state.settings[k]; flashSaved(); });
-  });
-  checks.forEach((k) => {
-    const el = document.getElementById(k);
-    el.checked = !!state.settings[k];
-    el.addEventListener("change", () => { state.settings[k] = el.checked; flashSaved(); });
-  });
-  const range = $("#limitRange"), out = $("#limitOut");
-  range.value = state.settings.limit; out.textContent = money(+range.value);
-  range.addEventListener("input", () => { state.settings.limit = +range.value; out.textContent = money(+range.value); flashSaved(); });
+  /* ==========================================================
+     AI assistant: understand a request and route to a category
+     ========================================================== */
+  function detectLang(text) {
+    const s = text.toLowerCase();
+    if (/[әғқңөұүһі]/.test(s)) return "kk";
+    if (new RegExp("(^|" + NL + ")(маған|керек|шақыр|иә|ия|сәлем|салем|рахмет|рақмет|қайда|үйге|қалай|нан|сүт|барамын|апар)" + END).test(s)) return "kk";
+    if (/[а-яё]/.test(s)) return "ru";
+    return state.lang;
+  }
 
-  $("#settingsForm").addEventListener("submit", (e) => e.preventDefault());
+  const RX = {
+    yes: new RegExp("^(да|давай|ага|подтверждаю|конечно|вызывай|заказывай|верно|иә|ия|йә|жарайды|болады|дұрыс|ок|окей|ok)" + END, "i"),
+    no: /^(нет|не надо|не нужно|отмена|отмени|стоп|жоқ|керек емес|қажет емес|тоқтат|болдырма)/i,
+    help: /(плохо|скор(ая|ую)|помогите|спасите|упал|болит|на помощь|sos|сос|жедел|жаным ауыр|құтқар|құлап|ауырып|көмекке)/i,
+    call: /(позвон|набери|созвон|қоңырау|хабарлас)/i,
+    son: /(сын|ерлан|ұлым|ұлыма)/i,
+    homeNav: /(главн|назад|в начало|меню|басты|артқа)/i,
+    family: /(настройк|родственник|лимит|баптау|туыс)/i,
+    taxi: /(такси|поехать|поеду|отвез|довез|жеткіз|апар|көлік|барғым)/i,
+    route: /(маршрут|автобус|как добраться|как доехать|как дойти|остановк|бағыт|қалай бар|аялдама|жол көрсет)/i,
+    food: new RegExp("(продукт|еда|покуп|магазин|закажи|хлеб|молок|яйц|кефир|азық|сүт|дүкен|тамақ|айран|(^|" + NL + ")нан" + END + ")", "i"),
+    usual: /(как обычно|как всегда|әдеттегідей|әдеттегі)/i,
+    thanks: /(спасибо|благодар|рахмет|рақмет)/i
+  };
+  const findDest = (s) => {
+    const hits = Object.keys(DEST).filter((k) => DEST[k].rx.test(s));
+    return hits.find((k) => k !== "home") || hits[0] || null;
+  };
+  const findKind = (s) => Object.keys(KINDS).find((k) => KINDS[k].rx.test(s)) || null;
 
-  /* ---------------- Partner form ---------------- */
-  $("#partnerForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    e.target.hidden = true;
-    $("#partnerOk").hidden = false;
+  function reply(text, screen) {
+    speak(text);
+    if (state.screen === "home") setReply(text);
+    else toast(text);
+    if (screen) setTimeout(() => go(screen), state.screen === "home" ? 900 : 0);
+  }
+
+  function understand(raw, viaVoice) {
+    const text = raw.trim();
+    if (!text) return;
+    const lang = detectLang(text);
+    if (lang !== state.lang) {
+      setLang(lang);
+      toast(lang === "kk" ? "Қазақ тіліне ауыстым" : "Перешла на русский язык", 2000);
+    }
+    const s = text.toLowerCase();
+    const quote = "«" + text.replace(/^./, (c) => c.toUpperCase()) + "»";
+    const cur = state.screen;
+
+    // 1) Emergency first
+    if (RX.help.test(s)) { reply(L("Зову на помощь.", "Көмекке шақырып жатырмын.")); return openHelp(0); }
+    if (RX.call.test(s)) {
+      const i = RX.son.test(s) ? 1 : 0;
+      const c = state.settings.contacts.findIndex((x) => x.id === (i ? "e" : "m"));
+      reply(L("Звоню.", "Қоңырау шалып жатырмын."));
+      return openHelp(Math.max(0, c), true);
+    }
+
+    // 2) Yes / no on the current screen
+    if (cur !== "home" && RX.yes.test(s)) { const b = $(`[data-actions="${cur}"] [data-confirm]`); if (b) return b.click(); }
+    if (cur !== "home" && RX.no.test(s)) { reply(L("Хорошо, отменила.", "Жарайды, тоқтаттым.")); return go("home"); }
+
+    // 3) Navigation
+    if (RX.family.test(s)) return reply(L("Открываю настройки родственника.", "Туыс баптауларын ашамын."), "family");
+    if (RX.homeNav.test(s) && !RX.taxi.test(s)) return reply(L("Возвращаюсь на главный экран.", "Басты бетке ораламын."), "home");
+
+    // 4) Categories
+    const dest = findDest(s);
+    const kind = findKind(s);
+    if (RX.route.test(s)) {
+      state.route.dest = dest || state.route.dest; state.route.quote = quote;
+      return reply(L(`Показываю, как добраться: ${DEST[state.route.dest].chip.ru.toLowerCase()}.`, `Қалай жетуге болатынын көрсетемін: ${DEST[state.route.dest].chip.kk.toLowerCase()}.`), "route");
+    }
+    if (RX.taxi.test(s) || (dest && !RX.food.test(s) && !kind)) {
+      Object.assign(state.taxi, { dest: dest || "home", status: "draft", quote });
+      const d = DEST[state.taxi.dest];
+      return reply(L(`Нашла такси, примерно ${d.price} тенге, приедет через ${d.eta} минуты. Вызвать?`,
+                     `Такси таптым, шамамен ${d.price} теңге, ${d.eta} минутта келеді. Шақырайын ба?`), "taxi");
+    }
+    if (kind) {
+      Object.assign(state.services, { kind, status: "draft", quote });
+      const k = KINDS[kind];
+      return reply(L(`${k.ru}: ${k.when.ru}. Вызвать?`, `${k.kk}: ${k.when.kk}. Шақырайын ба?`), "services");
+    }
+    if (RX.food.test(s) || RX.usual.test(s)) {
+      const items = {};
+      ITEMS.forEach((it, i) => { if (it.rx.test(s)) items[i] = 1; });
+      const usual = !Object.keys(items).length;
+      Object.assign(state.food, { items: usual ? Object.assign({}, USUAL) : items, status: "draft", quote });
+      return reply(usual ? L("Собрала как обычно: хлеб, молоко, кефир. Заказать?", "Әдеттегідей жинадым: нан, сүт, айран. Тапсырыс берейін бе?")
+                         : L("Собрала корзину. Проверьте и скажите «да».", "Себетті жинадым. Тексеріп, «иә» деңіз."), "food");
+    }
+    if (RX.thanks.test(s)) return reply(L("Пожалуйста! Обращайтесь.", "Оқасы жоқ! Кез келген уақытта айтыңыз."));
+
+    reply(L("Простите, я не поняла. Скажите иначе, например: «вызови такси домой». Или нажмите «Позвать на помощь».",
+            "Кешіріңіз, түсінбедім. Басқаша айтыңыз, мысалы: «үйге такси шақыр». Немесе «Көмекке шақыру» батырмасын басыңыз."));
+    if (cur !== "home") render();
+  }
+
+  // Clicking the example inside the hint sends it
+  hint.addEventListener("click", (e) => { if (e.target.tagName === "Q") understand(e.target.textContent, false); });
+
+  /* ==========================================================
+     Limit + relative safety net
+     ========================================================== */
+  const left = () => Math.max(0, state.settings.limit - state.settings.spent);
+  function limitNote(screen, sum) {
+    const el = $(`[data-limit="${screen}"]`);
+    if (!el) return false;
+    const over = sum > left();
+    el.classList.toggle("over", over);
+    el.textContent = over
+      ? L(`Больше месячного лимита: осталось ${money(left())}`, `Айлық лимиттен асады: ${money(left())} қалды`)
+      : L(`В пределах месячного лимита ${money(state.settings.limit)}`, `${money(state.settings.limit)} айлық лимит шегінде`);
+    return over;
+  }
+
+  function addLog(entry) {
+    state.log.unshift(Object.assign({ time: Date.now() }, entry));
+    save();
+  }
+
+  // Send an over-limit order to the first relative for approval.
+  function requestApproval(screen, label, sum, onApproved) {
+    const c = first();
+    const entry = { kind: "approval", ru: `${label.ru} — ${money(sum)}`, kk: `${label.kk} — ${money(sum)}`, status: "pending", screen };
+    addLog(entry);
+    state[screen].status = "pending";
+    pendingApprovals.set(entry.time, () => { entry.status = "ok"; save(); onApproved(); });
+    reply(L(`Отправила ${c.short.ru} на подтверждение.`, `${c.short.kk} растауға жібердім.`));
+    render();
+    // Demo: the relative approves after a few seconds if nobody approves in relative mode first
+    setTimeout(() => approve(entry.time, true), 5000);
+  }
+  const pendingApprovals = new Map();
+  function approve(id, auto) {
+    const fn = pendingApprovals.get(id);
+    if (!fn) return;
+    pendingApprovals.delete(id);
+    if (auto) toast(L(`${first().ru.split(",")[0]} одобрила заказ`, `${first().kk.split(",")[0]} тапсырысты мақұлдады`));
+    fn();
+    render();
+  }
+
+  function requestEnable(service) {
+    const c = first();
+    addLog({ kind: "enable", ru: `Просит включить: ${SERVICE_NAME[service].ru}`, kk: `Қосуды сұрайды: ${SERVICE_NAME[service].kk}`, status: "pending", service });
+    reply(L(`Попросила ${c.short.ru} включить ${SERVICE_NAME[service].ru}.`, `${c.short.kk} ${SERVICE_NAME[service].kk} қосуды сұрадым.`));
+    render();
+    setTimeout(() => {
+      if (state.settings.services[service]) return;
+      state.settings.services[service] = true;
+      const e = state.log.find((x) => x.kind === "enable" && x.service === service && x.status === "pending");
+      if (e) e.status = "ok";
+      save();
+      toast(L(`${c.ru.split(",")[0]} включила: ${SERVICE_NAME[service].ru}`, `${c.kk.split(",")[0]} қосты: ${SERVICE_NAME[service].kk}`));
+      render();
+    }, 4000);
+  }
+
+  /* ==========================================================
+     Rendering helpers
+     ========================================================== */
+  function btn(cls, text, onClick, confirmBtn) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = cls; b.textContent = text;
+    if (confirmBtn) b.dataset.confirm = "";
+    b.addEventListener("click", onClick);
+    return b;
+  }
+  function box(cls, text) { const d = document.createElement("div"); d.className = cls; d.textContent = text; return d; }
+  function chipRow(el, keys, current, label, onPick) {
+    el.innerHTML = "";
+    keys.forEach((k) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.textContent = label(k);
+      b.setAttribute("aria-pressed", String(k === current));
+      b.addEventListener("click", () => onPick(k));
+      el.appendChild(b);
+    });
+  }
+  function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // Common action area: disabled service / over limit / confirm / done
+  function actions(screen, service, sum, labels, onConfirm, doneText, extra) {
+    const a = $(`[data-actions="${screen}"]`);
+    a.innerHTML = "";
+    const note = $(`[data-limit="${screen}"]`);
+    if (note) note.textContent = "";
+    const st = state[screen].status;
+    if (service && !state.settings.services[service]) {
+      a.append(box("wait-box", L(`${first().ru.split(",")[0]} пока не включила ${SERVICE_NAME[service].ru}.`, `${first().kk.split(",")[0]} әзірге ${SERVICE_NAME[service].kk} қоспаған.`)));
+      const asked = state.log.some((x) => x.kind === "enable" && x.service === service && x.status === "pending");
+      a.append(asked ? box("wait-box", L("Запрос отправлен, ждём ответа…", "Сұрау жіберілді, жауап күтудеміз…"))
+                     : btn("btn-main alt", L(`Попросить ${first().short.ru} включить`, `${first().short.kk} қосуды сұрау`), () => requestEnable(service)));
+      return;
+    }
+    if (st === "done") { a.append(box("done-box", doneText)); if (extra) a.append(extra); return; }
+    if (st === "pending") { a.append(box("wait-box", L(`Ждём подтверждения от ${first().ru.split(",")[0]}…`, `${first().kk.split(",")[0]} растауын күтудеміз…`))); return; }
+    const over = limitNote(screen, sum);
+    if (over) {
+      if (state.settings.askOverLimit)
+        a.append(btn("btn-main alt", L(`Отправить ${first().short.ru} на подтверждение`, `${first().short.kk} растауға жіберу`),
+          () => requestApproval(screen, labels, sum, onConfirm), true));
+      else a.append(box("wait-box", L("Заказ больше лимита. Уменьшите его или позовите на помощь.", "Тапсырыс лимиттен асады. Азайтыңыз не көмекке шақырыңыз.")));
+    } else {
+      a.append(btn("btn-main", labels.btn, onConfirm, true));
+    }
+  }
+
+  function finishOrder(screen, sum, logLabel) {
+    state[screen].status = "done";
+    state.settings.spent += sum;
+    if (state.settings.seeOrders) addLog({ kind: "order", ru: logLabel.ru + " — " + money(sum), kk: logLabel.kk + " — " + money(sum), status: "ok" });
+    save();
+  }
+
+  /* ==========================================================
+     Screens
+     ========================================================== */
+  function renderHome() {
+    ["taxi", "food", "services"].forEach((k) => {
+      const on = state.settings.services[k];
+      $(`.tile[data-go="${k}"]`).classList.toggle("is-off", !on);
+      const lock = $(`[data-lock="${k}"]`);
+      lock.hidden = on; lock.textContent = L("выкл.", "өшір.");
+    });
+    $(".family-link .mini-av").textContent = first().av;
+  }
+
+  function renderTaxi() {
+    const s = state.taxi, d = DEST[s.dest];
+    $('[data-quote="taxi"]').textContent = s.quote || L("Скажите, куда поехать", "Қайда бару керегін айтыңыз");
+    $("#taxiFrom").textContent = s.dest === "home" ? L(ORIGIN.ru, ORIGIN.kk) : L(HOME_SHORT.ru, HOME_SHORT.kk);
+    $("#taxiTo").textContent = L(d.ru, d.kk);
+    $("#taxiPrice").textContent = "≈" + money(d.price);
+    $("#taxiEta").textContent = d.eta + L(" мин", " мин");
+    chipRow($("#taxiDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => {
+      if (s.status === "done" || s.status === "pending") return;
+      s.dest = k; s.quote = null; renderTaxi();
+    });
+    const st = $("#taxiStatus");
+    st.textContent = s.status === "done" ? L("В пути", "Жолда") : L("Ждёт", "Күтуде");
+    st.classList.toggle("wait", s.status !== "done");
+    const label = { ru: "Такси: " + d.chip.ru.toLowerCase(), kk: "Такси: " + d.chip.kk.toLowerCase(), btn: L("Да, вызвать", "Иә, шақыру") };
+    actions("taxi", "taxi", d.price, label, () => {
+      finishOrder("taxi", d.price, label);
+      speak(L(`Такси вызвано. Серик приедет через ${d.eta} минуты.`, `Такси шақырылды. Серік ${d.eta} минутта келеді.`));
+      renderTaxi();
+    }, L(`Такси вызвано — Серик будет через ${d.eta} мин`, `Такси шақырылды — Серік ${d.eta} минутта келеді`),
+    btn("btn-sub", L("Отменить поездку", "Сапарды болдырмау"), () => { s.status = "draft"; state.settings.spent -= d.price; save(); renderTaxi(); }));
+  }
+
+  function foodSum() {
+    return Object.entries(state.food.items).reduce((a, [i, q]) => a + ITEMS[i].price * q, 0);
+  }
+  function renderFood() {
+    const s = state.food;
+    if (!s.items) s.items = Object.assign({}, USUAL);
+    $('[data-quote="food"]').textContent = s.quote || L("Скажите, что купить", "Не алу керегін айтыңыз");
+    const list = $("#foodList");
+    list.innerHTML = "";
+    const keys = Object.keys(s.items);
+    const locked = s.status !== "draft";
+    if (!keys.length) list.append(el("div", "empty", esc(L("Корзина пуста — добавьте продукты ниже", "Себет бос — төменнен қосыңыз"))));
+    keys.forEach((i) => {
+      const it = ITEMS[i], q = s.items[i];
+      const row = el("div", "row");
+      row.append(el("div", "row-txt", `<b>${esc(L(it.ru, it.kk))}</b><small>${money(it.price)}</small>`));
+      if (!locked) {
+        const qty = el("div", "qty");
+        const minus = btn("", "−", () => { if (--s.items[i] <= 0) delete s.items[i]; renderFood(); });
+        minus.setAttribute("aria-label", L("Меньше", "Азайту"));
+        const plus = btn("", "+", () => { s.items[i]++; renderFood(); });
+        plus.setAttribute("aria-label", L("Больше", "Көбейту"));
+        qty.append(minus, el("span", "", String(q)), plus);
+        row.append(qty);
+      } else row.append(el("span", "row-price", "× " + q));
+      list.append(row);
+    });
+    const add = $("#foodAdd");
+    add.innerHTML = "";
+    if (!locked) ITEMS.forEach((it, i) => {
+      if (s.items[i]) return;
+      add.append(btn("chip", "+ " + L(it.ru, it.kk), () => { s.items[i] = 1; renderFood(); }));
+    });
+    const total = keys.length ? foodSum() + DELIVERY : 0;
+    $("#foodTotal").textContent = money(total);
+    const label = { ru: "Продукты", kk: "Азық-түлік", btn: L("Да, заказать", "Иә, тапсырыс беру") };
+    if (!keys.length && s.status === "draft") { $('[data-actions="food"]').innerHTML = ""; $('[data-limit="food"]').textContent = ""; return; }
+    actions("food", "food", total, label, () => {
+      finishOrder("food", total, label);
+      speak(L("Заказ принят, привезут примерно через сорок минут.", "Тапсырыс қабылданды, шамамен қырық минутта әкеледі."));
+      renderFood();
+    }, L("Заказ принят — привезут через ~40 мин", "Тапсырыс қабылданды — ~40 минутта әкеледі"),
+    btn("btn-sub", L("Новый заказ", "Жаңа тапсырыс"), () => { s.status = "draft"; s.items = Object.assign({}, USUAL); renderFood(); }));
+  }
+
+  function renderRoute() {
+    const s = state.route, d = DEST[s.dest];
+    $('[data-quote="route"]').textContent = s.quote || L("Скажите, куда нужно добраться", "Қайда бару керегін айтыңыз");
+    $("#routeFrom").textContent = s.dest === "home" ? L(ORIGIN.ru, ORIGIN.kk) : L(HOME_SHORT.ru, HOME_SHORT.kk);
+    $("#routeTo").textContent = L(d.ru, d.kk);
+    $("#routeBus").textContent = "№" + d.bus;
+    const next = 3 + (d.bus % 7);
+    $("#routeNext").textContent = next + L(" мин", " мин");
+    chipRow($("#routeDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => { s.dest = k; s.quote = null; renderRoute(); });
+    const stops = 3 + (d.bus % 5);
+    const steps = [
+      L("Пешком 3 минуты до остановки «Абая»", "«Абай» аялдамасына жаяу 3 минут"),
+      L(`Автобус №${d.bus}, ${stops} остановок (~${stops * 4} мин)`, `№${d.bus} автобус, ${stops} аялдама (~${stops * 4} мин)`),
+      L(`Выйти на остановке ${d.stop.ru}, 2 минуты пешком`, `${d.stop.kk} аялдамасында түсіп, жаяу 2 минут`)
+    ];
+    const ol = $("#routeSteps");
+    ol.innerHTML = "";
+    steps.forEach((x) => ol.append(el("li", "", esc(x))));
+    const a = $('[data-actions="route"]');
+    a.innerHTML = "";
+    a.append(btn("btn-main", L("Озвучить маршрут", "Бағытты айту"), () => speak(steps.join(". "))));
+    a.append(btn("btn-sub", L("Не хочу ждать — вызвать такси", "Күткім келмейді — такси шақыру"), () => {
+      Object.assign(state.taxi, { dest: s.dest, status: "draft", quote: null }); go("taxi");
+    }));
+  }
+
+  function renderServices() {
+    const s = state.services, k = KINDS[s.kind];
+    $('[data-quote="services"]').textContent = s.quote || L("Скажите, что случилось", "Не болғанын айтыңыз");
+    const kinds = $("#servKinds");
+    kinds.innerHTML = "";
+    Object.keys(KINDS).forEach((key) => {
+      const b = el("button", "kind", `${esc(L(KINDS[key].ru, KINDS[key].kk))}<small>${esc(L(KINDS[key].d.ru, KINDS[key].d.kk))}</small>`);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(key === s.kind));
+      b.addEventListener("click", () => { if (s.status !== "draft") return; s.kind = key; s.quote = null; renderServices(); });
+      kinds.append(b);
+    });
+    const info = $("#servInfo");
+    info.innerHTML = "";
+    [[L("Специалист", "Маман"), L(k.who.ru, k.who.kk)], [L("Когда", "Қашан"), L(k.when.ru, k.when.kk)], [L(k.priceLbl.ru, k.priceLbl.kk), money(k.price)]]
+      .forEach(([a, b]) => info.append(el("div", "row", `<div class="row-txt"><small>${esc(a)}</small><b>${esc(b)}</b></div>`)));
+    const label = { ru: k.ru, kk: k.kk, btn: L("Да, вызвать мастера", "Иә, шеберді шақыру") };
+    actions("services", "services", k.price, label, () => {
+      finishOrder("services", k.price, label);
+      speak(L("Записала. Специалист позвонит перед приходом.", "Жаздым. Маман келер алдында қоңырау шалады."));
+      renderServices();
+    }, L(`Записано: ${k.when.ru}. Позвонят заранее`, `Жазылды: ${k.when.kk}. Алдын ала қоңырау шалады`),
+    btn("btn-sub", L("Отменить", "Болдырмау"), () => { s.status = "draft"; state.settings.spent -= k.price; save(); renderServices(); }));
+    if (!state.settings.services.services) $('[data-limit="services"]').textContent = "";
+  }
+
+  function toggleRow(title, sub, on, onChange) {
+    const row = el("div", "row");
+    row.append(el("div", "row-txt", `<b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}`));
+    const sw = document.createElement("button");
+    sw.type = "button"; sw.className = "switch";
+    sw.setAttribute("role", "switch");
+    sw.setAttribute("aria-checked", String(on));
+    sw.setAttribute("aria-label", title);
+    sw.addEventListener("click", () => onChange(!on));
+    row.append(sw);
+    return row;
+  }
+
+  function renderFamily() {
+    const st = state.settings;
+    const cl = $("#famContacts");
+    cl.innerHTML = "";
+    st.contacts.forEach((c, i) => {
+      const row = el("div", "row");
+      row.append(el("span", "av av-" + c.color, esc(c.av)));
+      row.append(el("div", "row-txt", `<b>${esc(L(c.ru, c.kk))}</b><small>${esc(c.phone)}</small>`));
+      const tag = btn("row-tag" + (i ? " second" : ""), i ? L("Второй", "Екінші") : L("Первый", "Бірінші"), () => {
+        st.contacts.reverse(); save(); renderFamily();
+        toast(L("Порядок звонков изменён", "Қоңырау реті өзгертілді"));
+      });
+      tag.title = L("Поменять порядок", "Ретін ауыстыру");
+      row.append(tag);
+      cl.append(row);
+    });
+
+    const sv = $("#famServices");
+    sv.innerHTML = "";
+    [["taxi", L("Такси", "Такси"), L("Яндекс Go, inDrive", "Яндекс Go, inDrive")],
+     ["food", L("Продукты", "Азық-түлік"), L("Доставка", "Жеткізу")],
+     ["services", L("Бытовые услуги", "Тұрмыстық қызметтер"), L("Мастера, уборка", "Шеберлер, тазалау")]]
+      .forEach(([k, a, b]) => sv.append(toggleRow(a, b, st.services[k], (v) => { st.services[k] = v; save(); renderFamily(); })));
+
+    const sf = $("#famSafety");
+    sf.innerHTML = "";
+    sf.append(toggleRow(L("Сверх лимита — ко мне на подтверждение", "Лимиттен асса — маған растауға"), L("Иначе такой заказ не оформится", "Әйтпесе тапсырыс берілмейді"), st.askOverLimit, (v) => { st.askOverLimit = v; save(); renderFamily(); }));
+    sf.append(toggleRow(L("Видеть заказы Айгуль", "Әйгүлдің тапсырыстарын көру"), L("Только если Айгуль согласна", "Тек Әйгүл келіссе ғана"), st.seeOrders, (v) => { st.seeOrders = v; save(); renderFamily(); }));
+    sf.append(el("div", "row", `<div class="row-txt"><b>${esc(L("«Позвать на помощь»", "«Көмекке шақыру»"))}</b><small>${esc(L("Звоним по порядку контактов, затем оператору и в 103", "Байланыстар ретімен, сосын операторға және 103-ке"))}</small></div>`));
+
+    $("#famLimit").textContent = money(st.limit);
+    $("#famSpent").textContent = L(`Потрачено ${money(st.spent)} · осталось ${money(left())}`, `Жұмсалды ${money(st.spent)} · қалды ${money(left())}`);
+    $("#limitVal").textContent = money(st.limit);
+
+    const lg = $("#famLog");
+    lg.innerHTML = "";
+    if (!state.log.length) lg.append(el("div", "empty", esc(L("Пока запросов нет", "Әзірге өтініш жоқ"))));
+    state.log.slice(0, 8).forEach((x) => {
+      const row = el("div", "row");
+      const time = new Date(x.time).toLocaleTimeString(state.lang === "kk" ? "kk-KZ" : "ru-RU", { hour: "2-digit", minute: "2-digit" });
+      row.append(el("div", "row-txt", `<b>${esc(L(x.ru, x.kk))}</b><small>${esc(time)}</small>`));
+      if (x.status === "pending" && pendingApprovals.has(x.time)) row.append(btn("mini-btn", L("Одобрить", "Мақұлдау"), () => approve(x.time)));
+      else if (x.status === "pending" && x.kind === "enable") row.append(btn("mini-btn", L("Включить", "Қосу"), () => { st.services[x.service] = true; x.status = "ok"; save(); renderFamily(); }));
+      else if (x.status === "ok") row.append(el("span", "log-ok", "✓"));
+      lg.append(row);
+    });
+  }
+  $("#limitEdit").addEventListener("click", () => { const b = $("#limitBox"); b.hidden = !b.hidden; });
+  $$("[data-step]").forEach((b) => b.addEventListener("click", () => {
+    const st = state.settings;
+    st.limit = Math.min(100000, Math.max(5000, st.limit + +b.dataset.step));
+    save(); renderFamily();
+  }));
+
+  function render() {
+    renderHome();
+    ({ taxi: renderTaxi, food: renderFood, route: renderRoute, services: renderServices, family: renderFamily }[state.screen] || (() => {}))();
+  }
+
+  /* ==========================================================
+     "Позвать на помощь": relatives in order → operator → 103
+     ========================================================== */
+  let helpIdx = 0, helpTimer = null, lastFocus = null;
+  function helpChain() {
+    return state.settings.contacts.map((c) => ({ name: L(c.ru, c.kk), short: L(c.short.ru, c.short.kk), phone: c.phone, av: c.av, color: c.color }))
+      .concat([{ name: L("Оператор INDEPENDENT", "INDEPENDENT операторы"), short: L("оператору", "операторға"), phone: L("живой человек, 24/7", "тірі адам, 24/7"), av: "☎", color: "mint" }]);
+  }
+  function openHelp(start, single) {
+    lastFocus = document.activeElement;
+    helpIdx = start || 0;
+    $("#helpOverlay").hidden = false;
+    if (!single) addLog({ kind: "help", ru: "Нажала «Позвать на помощь»", kk: "«Көмекке шақыру» басты", status: "ok" });
+    renderHelp();
+    $("#helpClose").focus();
+  }
+  function renderHelp() {
+    const chain = helpChain();
+    const c = chain[helpIdx];
+    const av = $("#helpAv");
+    av.className = "av av-lg av-" + c.color; av.textContent = c.av;
+    $("#helpTitle").textContent = L("Звоним ", "Қоңырау: ") + c.short;
+    $("#helpText").textContent = c.phone + " · " + L("имитация звонка", "қоңырау имитациясы");
+    const steps = $("#helpSteps");
+    steps.innerHTML = "";
+    chain.forEach((x, i) => {
+      const d = el("div", "help-step" + (i === helpIdx ? " now" : i < helpIdx ? " skip" : ""), `${i + 1}. ${esc(x.name)}<i>${i === helpIdx ? esc(L("звоним…", "қоңырау…")) : i < helpIdx ? esc(L("не ответил", "жауап жоқ")) : ""}</i>`);
+      steps.append(d);
+    });
+    $("#helpNext").hidden = helpIdx >= chain.length - 1;
+    speak(L("Звоню " + c.short, c.short + " қоңырау шалып жатырмын"));
+    clearTimeout(helpTimer);
+    if (helpIdx < chain.length - 1) helpTimer = setTimeout(nextHelp, 9000);
+  }
+  function nextHelp() { const n = helpChain().length; if (helpIdx < n - 1) { helpIdx++; renderHelp(); } }
+  function closeHelp() {
+    clearTimeout(helpTimer);
+    $("#helpOverlay").hidden = true;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (state.screen === "home") setIdleHint();
+    if (state.screen === "family") renderFamily();
+    if (lastFocus) lastFocus.focus();
+  }
+  $("#helpBtn").addEventListener("click", () => openHelp(0));
+  $("#helpNext").addEventListener("click", nextHelp);
+  $("#helpClose").addEventListener("click", closeHelp);
+  $("#help103").addEventListener("click", () => {
+    clearTimeout(helpTimer);
+    $("#helpTitle").textContent = L("Вызываем скорую 103", "Жедел жәрдем 103 шақырылуда");
+    $("#helpText").textContent = L(`В рабочей версии — звонок 103 и SMS ${first().short.ru} с вашим адресом.`, `Жұмыс нұсқасында — 103-ке қоңырау және ${first().short.kk} мекенжайыңызбен SMS.`);
+    speak($("#helpTitle").textContent);
   });
+  $("#helpOverlay").addEventListener("click", (e) => { if (e.target.id === "helpOverlay") closeHelp(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#helpOverlay").hidden) closeHelp(); });
 
-  /* ---------------- Init ---------------- */
-  applySize();
-  applyContrast();
+  /* ==========================================================
+     Init
+     ========================================================== */
   applyLang();
-  replyLang = state.lang;
-  addMsg(L(
-    "Сәлеметсіз бе, Роза апа! Я ваш помощник. Скажите, что нужно — по-казахски или по-русски.",
-    "Сәлеметсіз бе, Роза апа! Мен сіздің көмекшіңізбін. Не керегін айтыңыз — қазақша немесе орысша."
-  ), "bot");
+  show(location.hash.slice(1) || "home");
+  cycleHints();
   if ("speechSynthesis" in window) { try { window.speechSynthesis.getVoices(); } catch (e) { /* ignore */ } }
 })();
