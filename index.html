@@ -8,25 +8,27 @@
   <meta name="description" content="INDEPENDENT — голосовой помощник на казахском и русском: такси, продукты, маршрут и услуги одной фразой. Родственник настраивает один раз и подстраховывает." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Manrope:wght@500;600;700;800&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Desktop-only side description -->
-  <aside class="side">
-    <div class="side-inner">
-      <div class="brand brand-dark"><span class="brand-face" aria-hidden="true"></span>INDEPENDENT</div>
-      <h1 data-i18n="side.title">Голосовой помощник для пожилых</h1>
-      <p data-i18n="side.lead">Одна фраза на казахском или русском — и помощник сам откроет нужный раздел: такси, продукты, маршрут или услуги мастера.</p>
-      <ul>
-        <li data-i18n="side.l1">Распознаёт речь на русском и казахском</li>
-        <li data-i18n="side.l2">ИИ сам переводит в нужную категорию</li>
-        <li data-i18n="side.l3">Продукты, такси, маршруты, мастера</li>
-        <li data-i18n="side.l4">Родственник настраивает один раз и подстраховывает</li>
-      </ul>
-      <p class="side-note" data-i18n="side.note">Прототип: заказы и звонки имитируются. Микрофон лучше всего работает в Chrome.</p>
+  <!-- Desktop navigation (hidden on phones) -->
+  <nav class="dnav" aria-label="Разделы">
+    <div class="brand"><span class="brand-face" aria-hidden="true"></span>INDEPENDENT</div>
+    <div class="dnav-links">
+      <button type="button" data-go="home" data-i18n="nav.home">Главная</button>
+      <button type="button" data-go="taxi" data-i18n="cat.taxi">Такси</button>
+      <button type="button" data-go="food" data-i18n="cat.food">Продукты</button>
+      <button type="button" data-go="route" data-i18n="cat.route">Маршрут</button>
+      <button type="button" data-go="services" data-i18n="cat.services">Услуги</button>
+      <button type="button" data-go="family" data-i18n="family.link">Режим родственника</button>
     </div>
-  </aside>
+    <div class="lang" role="group" aria-label="Язык / Тіл">
+      <button type="button" data-lang="ru" aria-pressed="true">РУС</button>
+      <button type="button" data-lang="kk" aria-pressed="false">ҚАЗ</button>
+    </div>
+    <button type="button" class="dnav-help" data-help data-i18n="help.btn">Позвать на помощь</button>
+  </nav>
 
   <div class="app" id="app">
 
@@ -41,14 +43,18 @@
           </div>
         </header>
 
-        <h2 class="headline" id="homeTitle"><span data-i18n="home.t1">Говорите —</span><em data-i18n="home.t2">я всё сделаю</em></h2>
+        <h2 class="headline" id="homeTitle"><span data-i18n="home.t1">Говорите —</span><em data-i18n="home.t2">я всё сделаю</em><svg class="scrawl" viewBox="0 0 300 18" preserveAspectRatio="none" aria-hidden="true"><path d="M3 12 C 60 4, 110 15, 170 8 S 260 5, 297 10" fill="none" stroke="#f2b531" stroke-width="3.5" stroke-linecap="round"/></svg></h2>
+        <p class="lead-desk" data-i18n="side.lead">Одна фраза на казахском или русском — и помощник сам откроет нужный раздел: такси, продукты, маршрут или услуги мастера.</p>
 
+        <div class="sun-wrap">
+        <span class="scribble" aria-hidden="true"><span data-i18n="home.scribble">нажмите и говорите</span><svg viewBox="0 0 60 40"><path d="M4 6 C 20 4, 40 10, 50 30 M50 30 l-9 -2 M50 30 l1 -9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></span>
         <button type="button" class="sun" id="micBtn" aria-label="Нажмите и говорите" data-i18n-aria="mic.aria">
           <svg class="sun-rays" viewBox="0 0 240 240" aria-hidden="true"><g id="rays"></g></svg>
           <span class="sun-core">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="11.5" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
           </span>
         </button>
+        </div>
 
         <div class="wave" id="wave" aria-hidden="true"></div>
         <p class="hint" id="hint" aria-live="polite"></p>
@@ -94,12 +100,12 @@
     <!-- ================= TAXI ================= -->
     <section class="screen" data-screen="taxi" hidden>
       <div class="top top-map">
-        <svg class="map-line" viewBox="0 0 400 200" preserveAspectRatio="none" aria-hidden="true">
+        <svg class="map-line" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
           <path d="M-10 175 C 60 120, 110 190, 180 150 S 300 60, 410 95" fill="none" stroke="#1f6a5f" stroke-width="22" stroke-linecap="round"/>
-          <path d="M-10 175 C 60 120, 110 190, 180 150 S 300 60, 410 95" fill="none" stroke="#f2b531" stroke-width="4" stroke-dasharray="1 11" stroke-linecap="round"/>
+          <path class="route-dots" d="M-10 175 C 60 120, 110 190, 180 150 S 300 60, 410 95" fill="none" stroke="#f2b531" stroke-width="4" stroke-dasharray="1 11" stroke-linecap="round"/>
+          <g class="pin-a"><circle cx="85" cy="157" r="17" fill="#fff" fill-opacity=".15"/><circle cx="85" cy="157" r="9" fill="#fff"/><circle cx="85" cy="157" r="3.5" fill="#0f3a34"/></g>
+          <g class="pin-b"><circle class="pin-halo" cx="302" cy="88" r="20" fill="#f2b531" fill-opacity=".22"/><circle cx="302" cy="88" r="11" fill="#f2b531"/><circle cx="302" cy="88" r="4" fill="#0f3a34"/></g>
         </svg>
-        <span class="pin pin-a" aria-hidden="true"></span>
-        <span class="pin pin-b" aria-hidden="true"></span>
         <header class="bar">
           <button type="button" class="back" data-back aria-label="Назад" data-i18n-aria="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           <div class="brand"><span class="brand-face" aria-hidden="true"></span>INDEPENDENT</div>

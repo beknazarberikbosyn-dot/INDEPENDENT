@@ -126,6 +126,7 @@
     render();
     const el = $(`[data-screen="${screen}"]`);
     el.scrollTop = 0; window.scrollTo(0, 0);
+    $$(".dnav [data-go]").forEach((b) => { if (b.dataset.go === screen) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     if (screen === "home" && !listening) setIdleHint();
   }
   window.addEventListener("hashchange", () => show(location.hash.slice(1) || "home"));
@@ -166,18 +167,20 @@
   /* ==========================================================
      Home: sun rays, waveform, hint
      ========================================================== */
+  // Sun rays: rotate and "breathe" (each ray changes length); faster while listening
+  const RAYS = 36;
+  const rayEls = [];
+  const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   (function drawSun() {
     const g = $("#rays");
-    const n = 36;
-    let html = "";
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      const r1 = 74, r2 = i % 2 ? 98 : 112;
-      const x1 = 120 + Math.cos(a) * r1, y1 = 120 + Math.sin(a) * r1;
-      const x2 = 120 + Math.cos(a) * r2, y2 = 120 + Math.sin(a) * r2;
-      html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>`;
+    const NS = "http://www.w3.org/2000/svg";
+    for (let i = 0; i < RAYS; i++) {
+      const l = document.createElementNS(NS, "line");
+      l.setAttribute("stroke", "currentColor");
+      l.setAttribute("stroke-width", "3.2");
+      l.setAttribute("stroke-linecap", "round");
+      g.appendChild(l); rayEls.push(l);
     }
-    g.innerHTML = html;
     const w = $("#wave");
     [14, 26, 38, 22, 44, 30, 18, 40, 24, 34, 16].forEach((h, i) => {
       const b = document.createElement("i");
@@ -186,6 +189,25 @@
       w.appendChild(b);
     });
   })();
+  let rot = 0, lastT = 0, energy = 0;
+  function drawRays(now) {
+    const t = now / 1000, dt = Math.min(0.05, t - lastT || 0); lastT = t;
+    energy += ((listening ? 1 : 0) - energy) * Math.min(1, dt * 4);   // smooth idle <-> listening
+    rot += dt * (8 + 40 * energy);
+    const amp = 6 + 12 * energy, spd = 1.6 + 4 * energy;
+    rayEls.forEach((l, i) => {
+      const base = i % 2 ? 22 : 34;
+      const len = base + amp * Math.sin(t * spd + i * 0.9) + (amp / 2) * Math.sin(t * spd * 0.6 + i * 2.3);
+      const a = (i / RAYS) * Math.PI * 2 + rot * Math.PI / 180;
+      const r1 = 76, r2 = r1 + Math.max(8, len);
+      l.setAttribute("x1", (120 + Math.cos(a) * r1).toFixed(1)); l.setAttribute("y1", (120 + Math.sin(a) * r1).toFixed(1));
+      l.setAttribute("x2", (120 + Math.cos(a) * r2).toFixed(1)); l.setAttribute("y2", (120 + Math.sin(a) * r2).toFixed(1));
+    });
+  }
+  function rayLoop(now) {
+    if (state.screen === "home" && !document.hidden) drawRays(now);
+    requestAnimationFrame(rayLoop);
+  }
 
   const EXAMPLES = {
     ru: ["Вызови такси домой", "Закажи продукты как обычно", "Как доехать до поликлиники?", "Течёт кран, нужен мастер"],
@@ -751,7 +773,7 @@
     if (state.screen === "family") renderFamily();
     if (lastFocus) lastFocus.focus();
   }
-  $("#helpBtn").addEventListener("click", () => openHelp(0));
+  $$("#helpBtn, [data-help]").forEach((b) => b.addEventListener("click", () => openHelp(0)));
   $("#helpNext").addEventListener("click", nextHelp);
   $("#helpClose").addEventListener("click", closeHelp);
   $("#help103").addEventListener("click", () => {
@@ -769,5 +791,36 @@
   applyLang();
   show(location.hash.slice(1) || "home");
   cycleHints();
+  if (reduceMotion) drawRays(0); else requestAnimationFrame(rayLoop);
+
+  /* ---------------- Micro-interactions ---------------- */
+  const RIPPLE = ".tile, .help-btn, .btn-main, .btn-sub, .chip, .pill-btn, .kind, .quote, .dnav-help, .btn-light, .btn-red, .mini-btn, .step";
+  document.addEventListener("pointerdown", (e) => {
+    const b = e.target.closest(RIPPLE);
+    if (!b || reduceMotion) return;
+    const r = b.getBoundingClientRect(), d = Math.max(r.width, r.height) * 2.2;
+    const sp = document.createElement("span");
+    sp.className = "ripple";
+    sp.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`;
+    b.appendChild(sp);
+    sp.addEventListener("animationend", () => sp.parentNode && sp.parentNode.removeChild(sp));
+  });
+  if (!reduceMotion && window.matchMedia("(hover: hover)").matches) {
+    // tiles lean slightly toward the cursor
+    $$(".tile").forEach((tile) => {
+      tile.addEventListener("pointermove", (e) => {
+        const r = tile.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+        tile.style.transform = `perspective(600px) rotateX(${(-y * 8).toFixed(2)}deg) rotateY(${(x * 8).toFixed(2)}deg) translateY(-4px) scale(1.035)`;
+      });
+      tile.addEventListener("pointerleave", () => { tile.style.transform = ""; });
+    });
+    // soft light follows the cursor on dark panels
+    $$(".top").forEach((top) => top.addEventListener("pointermove", (e) => {
+      const r = top.getBoundingClientRect();
+      top.style.setProperty("--mx", (e.clientX - r.left) + "px");
+      top.style.setProperty("--my", (e.clientY - r.top) + "px");
+    }));
+  }
   if ("speechSynthesis" in window) { try { window.speechSynthesis.getVoices(); } catch (e) { /* ignore */ } }
 })();
