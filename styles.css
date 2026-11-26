@@ -649,3 +649,53 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); ou
   .lm-btn { width: 54px; height: 54px; }
   .stat b.word { font-size: 24px; line-height: 38px; }
 }
+
+/* ==========================================================
+   Groceries with pictures
+   ========================================================== */
+.row-food { gap: 12px; }
+.food-pic { flex: none; width: 56px; height: 56px; }
+.food-pic svg, .food-card-pic svg, .staff-pic svg { display: block; width: 100%; height: 100%; }
+.food-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; margin: 8px 0 4px; }
+.food-card {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  background: #fff; border: 2px solid var(--line); border-radius: 22px 18px 22px 20px; padding: 10px 10px 12px; text-align: left;
+}
+.food-card-pic { width: 100%; aspect-ratio: 1; margin-bottom: 6px; }
+.food-card b { font-size: 16px; line-height: 1.15; }
+.food-card small { font-size: 14px; font-weight: 700; color: var(--muted); }
+.food-card-add {
+  position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--g800); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 22px; line-height: 1;
+  box-shadow: 0 3px 0 var(--g900); transition: transform .2s cubic-bezier(.3,1.6,.5,1);
+}
+@media (hover: hover) {
+  .food-card:hover { transform: translateY(-3px) scale(1.04); box-shadow: 0 12px 22px rgba(0,0,0,.10); }
+  .food-card:hover .food-card-add { transform: rotate(90deg) scale(1.1); background: var(--yellow); color: var(--g800); }
+}
+
+/* ==========================================================
+   Specialist profile
+   ========================================================== */
+.staff { margin-top: 12px; padding: 18px; }
+.staff-head { display: flex; gap: 16px; align-items: center; }
+.staff-pic { flex: none; width: 104px; height: 104px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 5px #fff, 0 6px 16px rgba(0,0,0,.12); transform: rotate(-3deg); }
+.staff-id small { display: block; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #6b5a3a; }
+.staff-id h3 { font-family: var(--head); font-weight: 800; font-size: 21px; line-height: 1.15; margin: 3px 0 4px; }
+.staff-rate { display: block; font-size: 15px; font-weight: 600; color: var(--muted); }
+.staff-rate b { color: #b07a00; }
+.staff-check { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; font-weight: 800; color: var(--ok); background: #d6efe6; padding: 4px 10px; border-radius: 999px; }
+.staff-check::before { content: "✓"; }
+.staff-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.staff-stats div { background: var(--cream); border-radius: 16px; padding: 10px 12px; }
+.staff-stats b { display: block; font-family: var(--head); font-weight: 800; font-size: 20px; }
+.staff-stats small { font-size: 13px; font-weight: 600; color: var(--muted); }
+.staff-bio { margin: 14px 0 0; font-size: 16px; line-height: 1.45; }
+.staff-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.staff-tags span { font-size: 14px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: var(--salmon); color: #6d2414; }
+.staff-review { margin: 14px 0 0; padding: 12px 14px; border-left: 4px solid var(--yellow); background: #fff7e2; border-radius: 4px 14px 14px 4px; font-family: "Caveat", cursive; font-size: 21px; line-height: 1.2; color: #4a3a17; }
+@media (min-width: 1024px) {
+  .staff-pic { width: 128px; height: 128px; }
+  .staff-id h3 { font-size: 26px; }
+  .food-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}

@@ -69,18 +69,18 @@
   const END = "(?![" + LET + "])";
 
   const ITEMS = [
-    { rx: new RegExp("(хлеб|(^|" + NL + ")нан" + END + ")", "i"), ru: "Хлеб", kk: "Нан", price: 250 },
-    { rx: /(молок|сүт)/i, ru: "Молоко 1 л", kk: "Сүт 1 л", price: 520 },
-    { rx: /(кефир|айран)/i, ru: "Кефир", kk: "Айран", price: 480 },
-    { rx: /(яйц|жұмыртқа)/i, ru: "Яйца, 10 шт", kk: "Жұмыртқа, 10 дана", price: 900 },
-    { rx: /(сахар|қант)/i, ru: "Сахар 1 кг", kk: "Қант 1 кг", price: 560 },
-    { rx: /(чай|шай)/i, ru: "Чай", kk: "Шай", price: 1300 },
-    { rx: /(масл|сары май)/i, ru: "Масло", kk: "Сары май", price: 1400 },
-    { rx: /(картош|картоп)/i, ru: "Картофель 2 кг", kk: "Картоп 2 кг", price: 600 },
-    { rx: /(яблок|алма)/i, ru: "Яблоки 1 кг", kk: "Алма 1 кг", price: 750 },
-    { rx: /(мяс|сиыр)/i, ru: "Говядина 1 кг", kk: "Сиыр еті 1 кг", price: 3800 },
-    { rx: /(курин|курица|тауық)/i, ru: "Курица", kk: "Тауық", price: 2200 },
-    { rx: /(рис|күріш)/i, ru: "Рис 1 кг", kk: "Күріш 1 кг", price: 700 }
+    { art: "bread", rx: new RegExp("(хлеб|(^|" + NL + ")нан" + END + ")", "i"), ru: "Хлеб", kk: "Нан", price: 250 },
+    { art: "milk", rx: /(молок|сүт)/i, ru: "Молоко 1 л", kk: "Сүт 1 л", price: 520 },
+    { art: "kefir", rx: /(кефир|айран)/i, ru: "Кефир", kk: "Айран", price: 480 },
+    { art: "eggs", rx: /(яйц|жұмыртқа)/i, ru: "Яйца, 10 шт", kk: "Жұмыртқа, 10 дана", price: 900 },
+    { art: "sugar", rx: /(сахар|қант)/i, ru: "Сахар 1 кг", kk: "Қант 1 кг", price: 560 },
+    { art: "tea", rx: /(чай|шай)/i, ru: "Чай", kk: "Шай", price: 1300 },
+    { art: "butter", rx: /(масл|сары май)/i, ru: "Масло", kk: "Сары май", price: 1400 },
+    { art: "potato", rx: /(картош|картоп)/i, ru: "Картофель 2 кг", kk: "Картоп 2 кг", price: 600 },
+    { art: "apple", rx: /(яблок|алма)/i, ru: "Яблоки 1 кг", kk: "Алма 1 кг", price: 750 },
+    { art: "beef", rx: /(мяс|сиыр)/i, ru: "Говядина 1 кг", kk: "Сиыр еті 1 кг", price: 3800 },
+    { art: "chicken", rx: /(курин|курица|тауық)/i, ru: "Курица", kk: "Тауық", price: 2200 },
+    { art: "rice", rx: /(рис|күріш)/i, ru: "Рис 1 кг", kk: "Күріш 1 кг", price: 700 }
   ];
   const USUAL = { 0: 1, 1: 1, 2: 1 }; // "as usual": bread, milk, kefir
   const DELIVERY = 500;
@@ -91,6 +91,27 @@
     cleaning: { rx: /(уборк|убрать|убраться|клининг|помыть|тазала|жинау|жинап)/i, ru: "Уборка", kk: "Тазалау", d: { ru: "«Таза Үй», 3 часа", kk: "«Таза Үй», 3 сағат" }, who: { ru: "Гульнара, ★ 5.0", kk: "Гүлнара, ★ 5.0" }, when: { ru: "завтра, 10:00", kk: "ертең, 10:00" }, price: 9000, priceLbl: { ru: "Стоимость", kk: "Бағасы" } },
     handy:    { rx: /(мастер|почин|сломал|не работает|шебер|бұзыл|жөнде)/i, ru: "Мастер на все руки", kk: "Әмбебап шебер", d: { ru: "мебель, двери", kk: "жиһаз, есік" }, who: { ru: "Нурлан, ★ 4.9", kk: "Нұрлан, ★ 4.9" }, when: { ru: "завтра, 12:00–14:00", kk: "ертең, 12:00–14:00" }, price: 3500, priceLbl: { ru: "Выезд и осмотр", kk: "Келу және қарау" } }
   };
+
+  // Specialist profiles shown on the services screen (prototype data; portraits are illustrations from art.js)
+  const STAFF = {
+    plumber: { name: { ru: "Бауыржан Сейткали", kk: "Бауыржан Сейтқали" }, rating: 4.9, exp: 14, jobs: 1240, reviews: 312,
+      bio: { ru: "Меняет смесители, чинит протечки и трубы. Работает аккуратно, после себя убирает. Говорит на казахском и русском.", kk: "Араластырғыш ауыстырады, ағып жатқан құбырларды жөндейді. Ұқыпты жұмыс істейді, соңынан жинап кетеді. Қазақша және орысша сөйлейді." },
+      tags: { ru: ["Смесители", "Трубы", "Унитазы", "Бойлеры"], kk: ["Араластырғыш", "Құбыр", "Унитаз", "Бойлер"] },
+      review: { ru: "«Пришёл вовремя, всё объяснил простыми словами» — Сауле, 71 год", kk: "«Уақытында келді, бәрін қарапайым түсіндірді» — Сәуле, 71 жаста" } },
+    electric: { name: { ru: "Азамат Жумабеков", kk: "Азамат Жұмабеков" }, rating: 4.8, exp: 9, jobs: 860, reviews: 204,
+      bio: { ru: "Розетки, выключатели, люстры, проводка. Допуск по электробезопасности IV группы. Перед работой отключает свет и всё проверяет.", kk: "Розетка, ажыратқыш, шам, сым тарту. Электр қауіпсіздігі бойынша IV топ рұқсаты бар. Жұмыс алдында жарықты өшіріп, бәрін тексереді." },
+      tags: { ru: ["Розетки", "Свет", "Проводка", "Щитки"], kk: ["Розетка", "Жарық", "Сым", "Қалқан"] },
+      review: { ru: "«Поменял все розетки за час, денег лишних не взял» — Ерболат, 68 лет", kk: "«Барлық розетканы бір сағатта ауыстырды, артық ақша алмады» — Ерболат, 68 жаста" } },
+    cleaning: { name: { ru: "Гульнара Ахметова", kk: "Гүлнара Ахметова" }, rating: 5.0, exp: 7, jobs: 530, reviews: 176,
+      bio: { ru: "Генеральная и обычная уборка, мытьё окон, стирка штор. Свои безопасные средства без резкого запаха.", kk: "Жалпы және күнделікті тазалау, терезе жуу, перде жуу. Өткір иісі жоқ қауіпсіз құралдарымен келеді." },
+      tags: { ru: ["Квартира", "Окна", "Кухня", "Шторы"], kk: ["Пәтер", "Терезе", "Ас үй", "Перде"] },
+      review: { ru: "«Как дочка помогла — чисто и душевно» — Айгуль, 74 года", kk: "«Қызым көмектескендей — таза әрі жылы» — Әйгүл, 74 жаста" } },
+    handy: { name: { ru: "Нурлан Оспанов", kk: "Нұрлан Оспанов" }, rating: 4.9, exp: 22, jobs: 1980, reviews: 455,
+      bio: { ru: "Соберёт мебель, починит дверь или замок, повесит полку и карниз. Всё нужное привозит с собой.", kk: "Жиһаз құрастырады, есік не құлып жөндейді, сөре мен карниз іледі. Керек құралдың бәрін өзімен әкеледі." },
+      tags: { ru: ["Мебель", "Двери", "Замки", "Полки"], kk: ["Жиһаз", "Есік", "Құлып", "Сөре"] },
+      review: { ru: "«Золотые руки, и чай с нами попил» — Камал, 80 лет", kk: "«Алтын қол, бізбен шай да ішті» — Камал, 80 жаста" } }
+  };
+  const ART = window.ART || { staff: {}, food: {} };
 
   const SERVICE_NAME = { taxi: { ru: "такси", kk: "такси" }, food: { ru: "продукты", kk: "азық-түлік" }, services: { ru: "бытовые услуги", kk: "тұрмыстық қызметтер" } };
 
@@ -143,15 +164,38 @@
   /* ==========================================================
      Speech: synthesis
      ========================================================== */
+  // 1) A natural pre-recorded ElevenLabs clip (voice/manifest.js) when the phrase is known.
+  // 2) Otherwise the browser voice — but Kazakh only with a real Kazakh voice:
+  //    a Russian voice reading Kazakh text is unintelligible, and the text is on screen anyway.
+  const clipKey = (lang, text) => lang + "|" + String(text).trim().replace(/\s+/g, " ").toLowerCase();
+  let curAudio = null;
+  function stopSpeech() {
+    if (curAudio) { try { curAudio.pause(); } catch (e) { /* ignore */ } curAudio = null; }
+    if ("speechSynthesis" in window) { try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+  }
   function speak(text) {
+    if (!text) return;
+    const lang = state.lang;
+    if (window.__voiceLog) window.__voiceLog.push({ lang, text: String(text) });
+    stopSpeech();
+    const src = (window.VOICE_CLIPS || {})[clipKey(lang, text)];
+    if (src) {
+      const a = new Audio(src);
+      curAudio = a;
+      a.play().catch(() => { if (curAudio === a) browserSpeak(text, lang); });
+      return;
+    }
+    browserSpeak(text, lang);
+  }
+  function browserSpeak(text, lang) {
     if (!("speechSynthesis" in window)) return;
     try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      const code = state.lang === "kk" ? "kk-KZ" : "ru-RU";
-      u.lang = code;
+      const code = lang === "kk" ? "kk-KZ" : "ru-RU";
       const vs = window.speechSynthesis.getVoices();
-      const v = vs.find((x) => x.lang === code) || vs.find((x) => x.lang && x.lang.startsWith(state.lang));
+      const v = vs.find((x) => x.lang && x.lang.replace("_", "-") === code) || vs.find((x) => x.lang && x.lang.toLowerCase().startsWith(lang));
+      if (lang === "kk" && !v) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = code;
       if (v) u.voice = v;
       u.rate = 0.92;
       window.speechSynthesis.speak(u);
@@ -261,7 +305,7 @@
     }
     if (listening && rec) { rec.stop(); return; }
     try {
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      stopSpeech();
       rec = new SR();
       rec.lang = state.lang === "kk" ? "kk-KZ" : "ru-RU";
       rec.interimResults = true;
@@ -887,7 +931,8 @@
     if (!keys.length) list.append(el("div", "empty", esc(L("Корзина пуста — добавьте продукты ниже", "Себет бос — төменнен қосыңыз"))));
     keys.forEach((i) => {
       const it = ITEMS[i], q = s.items[i];
-      const row = el("div", "row");
+      const row = el("div", "row row-food");
+      row.append(el("span", "food-pic", ART.food[it.art] || ""));
       row.append(el("div", "row-txt", `<b>${esc(L(it.ru, it.kk))}</b><small>${money(it.price)}</small>`));
       if (!locked) {
         const qty = el("div", "qty");
@@ -902,9 +947,13 @@
     });
     const add = $("#foodAdd");
     add.innerHTML = "";
+    add.hidden = locked;
     if (!locked) ITEMS.forEach((it, i) => {
       if (s.items[i]) return;
-      add.append(btn("chip", "+ " + L(it.ru, it.kk), () => { s.items[i] = 1; renderFood(); }));
+      const card = btn("food-card", "", () => { s.items[i] = 1; renderFood(); });
+      card.innerHTML = `<span class="food-card-pic">${ART.food[it.art] || ""}</span><b>${esc(L(it.ru, it.kk))}</b><small>${money(it.price)}</small><span class="food-card-add" aria-hidden="true">+</span>`;
+      card.setAttribute("aria-label", L("Добавить: ", "Қосу: ") + L(it.ru, it.kk) + ", " + money(it.price));
+      add.append(card);
     });
     const total = keys.length ? foodSum() + DELIVERY : 0;
     $("#foodTotal").textContent = money(total);
@@ -970,9 +1019,29 @@
       b.addEventListener("click", () => { if (s.status !== "draft") return; s.kind = key; s.quote = null; renderServices(); });
       kinds.append(b);
     });
+    const st = STAFF[s.kind];
+    const prof = $("#servStaff");
+    const yrs = (n) => L(`${n} ${plural(n, ["год", "года", "лет"])}`, `${n} жыл`);
+    prof.innerHTML = `
+      <div class="staff-head">
+        <span class="staff-pic">${ART.staff[s.kind] || ""}</span>
+        <div class="staff-id">
+          <small>${esc(L(k.ru, k.kk))}</small>
+          <h3>${esc(L(st.name.ru, st.name.kk))}</h3>
+          <span class="staff-rate"><b>★ ${st.rating.toFixed(1)}</b> · ${st.reviews} ${esc(L("отзывов", "пікір"))}</span>
+          <span class="staff-check">${esc(L("Документы проверены", "Құжаттары тексерілген"))}</span>
+        </div>
+      </div>
+      <div class="staff-stats">
+        <div><b>${esc(yrs(st.exp))}</b><small>${esc(L("опыт работы", "тәжірибе"))}</small></div>
+        <div><b>${st.jobs.toLocaleString("ru-RU")}</b><small>${esc(L("выполнено заказов", "орындалған тапсырыс"))}</small></div>
+      </div>
+      <p class="staff-bio">${esc(L(st.bio.ru, st.bio.kk))}</p>
+      <div class="staff-tags">${L(st.tags.ru, st.tags.kk).map((x) => `<span>${esc(x)}</span>`).join("")}</div>
+      <blockquote class="staff-review">${esc(L(st.review.ru, st.review.kk))}</blockquote>`;
     const info = $("#servInfo");
     info.innerHTML = "";
-    [[L("Специалист", "Маман"), L(k.who.ru, k.who.kk)], [L("Когда", "Қашан"), L(k.when.ru, k.when.kk)], [L(k.priceLbl.ru, k.priceLbl.kk), money(k.price)]]
+    [[L("Когда", "Қашан"), L(k.when.ru, k.when.kk)], [L(k.priceLbl.ru, k.priceLbl.kk), money(k.price)]]
       .forEach(([a, b]) => info.append(el("div", "row", `<div class="row-txt"><small>${esc(a)}</small><b>${esc(b)}</b></div>`)));
     const label = { ru: k.ru, kk: k.kk, btn: L("Да, вызвать мастера", "Иә, шеберді шақыру") };
     actions("services", "services", k.price, label, () => {
@@ -1094,7 +1163,7 @@
   function closeHelp() {
     clearTimeout(helpTimer);
     $("#helpOverlay").hidden = true;
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    stopSpeech();
     if (state.screen === "home") setIdleHint();
     if (state.screen === "family") renderFamily();
     if (lastFocus) lastFocus.focus();
