@@ -72,8 +72,6 @@ const CMDS = {
       if (/доехать|добраться|Автобус|барамын|автобус/i.test(c)) {
         const n = await p.evaluate(() => document.querySelectorAll("#routeSteps .step-btn").length);
         for (let i = 0; i < n; i++) { await p.evaluate((j) => document.querySelectorAll("#routeSteps .step-btn")[j].click(), i); await tick(600); }
-        await p.evaluate(() => { const b = document.querySelector('[data-actions="route"] .btn-main'); if (b) b.click(); });
-        await tick(600);
       }
       if (/плохо|ауырып|Позвони|қоңырау/i.test(c)) {
         for (let i = 0; i < 4; i++) { await p.evaluate(() => { const b = document.getElementById("helpNext"); if (b && !b.hidden) b.click(); }); await tick(500); }
@@ -99,6 +97,23 @@ const CMDS = {
     await p.evaluate((l) => { const b = [...document.querySelectorAll('[data-lang]')].find((x) => x.dataset.lang === l); b.click(); }, lang);
     await tick(300);
     await log();
+    // Route steps for every city and destination (read from the screen, no clicks needed)
+    const cities = await p.evaluate(() => Object.keys((window.KZ || window.CITIES || {}).cities || {}));
+    for (const city of cities) {
+      await p.evaluate((c) => {
+        const s = JSON.parse(localStorage.getItem("ind2.settings") || "{}"); s.city = c;
+        localStorage.setItem("ind2.settings", JSON.stringify(s));
+      }, city);
+      await p.reload(); await tick(800);
+      await p.evaluate(() => { location.hash = "route"; }); await tick(1500);
+      const dests = await p.evaluate(() => document.querySelectorAll("#routeDest .chip").length);
+      for (let i = 0; i < dests; i++) {
+        await p.evaluate((j) => document.querySelectorAll("#routeDest .chip")[j].click(), i);
+        await tick(1500);
+        const steps = await p.evaluate(() => [...document.querySelectorAll("#routeSteps .step-btn")].map((b) => b.textContent.trim()));
+        steps.forEach((t) => { const k = lang + "|" + t; if (!seen.has(k)) seen.set(k, { lang, text: t }); });
+      }
+    }
     await ctx.close();
   }
   await browser.close();

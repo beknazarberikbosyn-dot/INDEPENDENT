@@ -209,6 +209,23 @@
     }
     browserSpeak(text, lang);
   }
+  // Several phrases one after another (route steps): clips if all are recorded, else one browser utterance.
+  function speakSeq(texts) {
+    const lang = state.lang, clips = window.VOICE_CLIPS || {};
+    const srcs = texts.map((x) => clips[clipKey(lang, x)]);
+    if (srcs.some((x) => !x)) return speak(texts.join(". "));
+    stopSpeech();
+    if (window.__voiceLog) texts.forEach((x) => window.__voiceLog.push({ lang, text: x }));
+    let i = 0;
+    const next = () => {
+      if (i >= srcs.length) return;
+      const a = new Audio(srcs[i++]);
+      curAudio = a;
+      a.onended = () => { if (curAudio === a) setTimeout(next, 250); };
+      a.play().catch(() => { if (curAudio === a) browserSpeak(texts.join(". "), lang); });
+    };
+    next();
+  }
   function browserSpeak(text, lang) {
     if (!("speechSynthesis" in window)) return;
     try {
@@ -656,7 +673,7 @@
     const msg = {
       arrived: L("Серик подъехал. Белая Тойота Камри, номер семьсот семьдесят семь. Выходите не спеша.", "Серік келді. Ақ Тойота Камри, нөмірі жеті жүз жетпіс жеті. Асықпай шығыңыз."),
       trip: L("Поехали. Я скажу, когда приедем.", "Жүрдік. Жеткенде айтамын."),
-      finished: L(`Приехали: ${placeName(state.taxi.dest)}. Хорошего дня!`, `Жеттік: ${placeName(state.taxi.dest)}. Күніңіз сәтті өтсін!`)
+      finished: L("Приехали. Хорошего дня!", "Жеттік. Күніңіз сәтті өтсін!")
     }[phase];
     if (msg && prev !== "wait") { speak(msg); if (state.screen !== "taxi") toast(msg, 4500); }
     if (state.screen === "taxi") renderTaxi();
@@ -1050,7 +1067,7 @@
     });
     const a = $('[data-actions="route"]');
     a.innerHTML = "";
-    a.append(btn("btn-main", L("Озвучить маршрут", "Бағытты айту"), () => speak(steps.join(". "))));
+    a.append(btn("btn-main", L("Озвучить маршрут", "Бағытты айту"), () => speakSeq(steps)));
     a.append(btn("btn-sub", L("Не хочу ждать — вызвать такси", "Күткім келмейді — такси шақыру"), () => {
       Object.assign(state.taxi, { dest: s.dest, status: "draft", quote: null }); go("taxi");
     }));
