@@ -334,7 +334,13 @@
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null, listening = false, listenBtn = null;
 
-  function listen(btn) {
+  // Kazakh recognition (kk-KZ) is missing in Safari and some Chrome builds: they fail with
+  // "language-not-supported" or "service-not-allowed". Then we listen with the Russian recognizer
+  // (it hears Kazakh words in Cyrillic) and keep the Kazakh interface.
+  let kkRecOff = store.get("kkRecOff", false);
+  let recFallback = false;
+  function recLang() { return state.lang === "kk" && !kkRecOff ? "kk-KZ" : "ru-RU"; }
+  function listen(btn, retry) {
     if (!SR) {
       toast(L("Этот браузер не распознаёт речь — напишите текстом (лучше всего Chrome).",
               "Бұл браузер сөзді танымайды — мәтінмен жазыңыз (Chrome жақсы)."), 4200);
@@ -342,14 +348,22 @@
       $("#typeForm").hidden = false; $("#typeField").focus();
       return;
     }
-    if (listening && rec) { rec.stop(); return; }
+    if (listening && rec && !retry) { rec.stop(); return; }
+    const lang = recLang();
+    const fallBack = () => {
+      if (lang !== "kk-KZ") return false;
+      kkRecOff = true; store.set("kkRecOff", true);
+      toast("Бұл браузерде қазақша тану жоқ — қазақша сөйлей беріңіз, орыс тануы арқылы тыңдаймын.", 4500);
+      setTimeout(() => listen(btn, true), 150);
+      return true;
+    };
     try {
       stopSpeech();
       rec = new SR();
-      rec.lang = state.lang === "kk" ? "kk-KZ" : "ru-RU";
+      rec.lang = lang;
       rec.interimResults = true;
       rec.maxAlternatives = 1;
-      let finalText = "";
+      let finalText = "", heard = false, retrying = false;
       listenBtn = btn;
       rec.onstart = () => {
         listening = true; btn.classList.add("is-listening"); $("#wave").classList.add("on");
@@ -357,6 +371,7 @@
         else setQuote(L("Слушаю…", "Тыңдап тұрмын…"));
       };
       rec.onresult = (e) => {
+        heard = true;
         let interim = "";
         for (let i = e.resultIndex; i < e.results.length; i++) {
           const r = e.results[i];
@@ -367,20 +382,22 @@
         if (state.screen === "home") setReply("«" + live + "»"); else setQuote("«" + live + "»");
       };
       rec.onerror = (e) => {
+        if (!heard && (e.error === "language-not-supported" || e.error === "service-not-allowed") && fallBack()) { retrying = true; return; }
         if (e.error === "not-allowed" || e.error === "service-not-allowed")
-          toast(L("Нет доступа к микрофону. Разрешите его в браузере или напишите текстом.", "Микрофонға рұқсат жоқ. Браузерде рұқсат беріңіз не мәтінмен жазыңыз."), 4200);
-        else if (e.error === "language-not-supported")
-          toast(L("Казахский голос недоступен в этом браузере — переключитесь на РУС или пишите текстом.", "Бұл браузерде қазақ тілі жоқ — РУС таңдаңыз не мәтінмен жазыңыз."), 4200);
+          toast(L("Нет доступа к микрофону. Разрешите его в браузере (значок слева от адреса) или напишите текстом.", "Микрофонға рұқсат жоқ. Браузерде рұқсат беріңіз (мекенжай жанындағы белгі) не мәтінмен жазыңыз."), 5000);
+        else if (e.error === "audio-capture")
+          toast(L("Микрофон не найден. Проверьте, что он подключён.", "Микрофон табылмады. Қосулы екенін тексеріңіз."), 4500);
       };
       rec.onend = () => {
         listening = false; btn.classList.remove("is-listening"); $("#wave").classList.remove("on");
-        if (finalText.trim()) understand(finalText, true);
+        if (retrying) return;
+        if (finalText.trim()) { recFallback = lang === "ru-RU" && state.lang === "kk"; understand(finalText, true); recFallback = false; }
         else if (state.screen === "home") setIdleHint();
         else render();
       };
       rec.start();
     } catch (err) {
-      toast(L("Не удалось включить микрофон.", "Микрофон қосылмады."));
+      if (!fallBack()) toast(L("Не удалось включить микрофон.", "Микрофон қосылмады."));
     }
   }
   $("#micBtn").addEventListener("click", (e) => listen(e.currentTarget));
@@ -429,11 +446,32 @@
     if (screen) setTimeout(() => go(screen), state.screen === "home" ? 900 : 0);
   }
 
+  // Restores Kazakh letters in text from the Russian recognizer: «Уйге такси шакыр» → «үйге такси шақыр».
+  // The stems are harvested from the command patterns themselves, so every Kazakh keyword is covered.
+  const foldKk = (x) => x.replace(/[әғқңөұүһі]/g, (c) => ({ ә: "а", ғ: "г", қ: "к", ң: "н", ө: "о", ұ: "у", ү: "у", һ: "х", і: "и" })[c]);
+  let kkStems = null;
+  function kazakhify(text) {
+    if (!kkStems) {
+      const m = new Map();
+      const rxs = [].concat(Object.values(RX), Object.values(DEST).map((d) => d.rx), Object.values(KINDS).map((k) => k.rx),
+        ITEMS.map((i) => i.rx), CITY_RX.map((c) => c[1])).filter(Boolean);
+      rxs.forEach((rx) => rx.source.split(/[|()?:^$\\[\]*+.{}]+/).forEach((tok) => {
+        tok = tok.trim().toLowerCase();
+        if (tok.length >= 3 && /[әғқңөұүһі]/.test(tok) && /^[а-яёәғқңөұүһі ]+$/.test(tok)) m.set(foldKk(tok), tok);
+      }));
+      kkStems = [...m.entries()].sort((x, y) => y[0].length - x[0].length);
+    }
+    let t = text.toLowerCase();
+    kkStems.forEach(([f, orig]) => { if (t.includes(f)) t = t.split(f).join(orig); });
+    return t;
+  }
+
   function understand(raw, viaVoice) {
-    const text = raw.trim();
+    const text = recFallback ? kazakhify(raw.trim()) : raw.trim();
     if (!text) return;
     const lang = detectLang(text);
-    if (lang !== state.lang) {
+    // Russian recognizer standing in for Kazakh writes Kazakh words without ә/қ/ң… — keep the Kazakh UI
+    if (lang !== state.lang && !(recFallback && lang === "ru")) {
       setLang(lang);
       toast(lang === "kk" ? "Қазақ тіліне ауыстым" : "Перешла на русский язык", 2000);
     }
