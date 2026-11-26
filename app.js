@@ -429,7 +429,7 @@
     if (RX.taxi.test(s) || (dest && !RX.food.test(s) && !kind)) {
       Object.assign(state.taxi, { dest: dest || "home", status: "draft", quote });
       const d = DEST[state.taxi.dest];
-      return reply(L(`Нашла такси, примерно ${d.price} тенге, приедет через ${d.eta} минуты. Вызвать?`,
+      return reply(L(`Нашла такси, примерно ${d.price} тенге, приедет через ${d.eta} ${plural(d.eta, ["минуту", "минуты", "минут"])}. Вызвать?`,
                      `Такси таптым, шамамен ${d.price} теңге, ${d.eta} минутта келеді. Шақырайын ба?`), "taxi");
     }
     if (kind) {
@@ -910,7 +910,7 @@
       finishOrder("taxi", d.price, label);
       s.ride = { t0: Date.now(), plan: ridePlan(s.dest) };
       s.phase = "pickup";
-      speak(L(`Такси вызвано. Серик приедет через ${d.eta} минуты.`, `Такси шақырылды. Серік ${d.eta} минутта келеді.`));
+      speak(L(`Такси вызвано. Серик приедет через ${d.eta} ${plural(d.eta, ["минуту", "минуты", "минут"])}.`, `Такси шақырылды. Серік ${d.eta} минутта келеді.`));
       renderTaxi();
     }, doneText, extra);
     syncTaxiMap();
