@@ -28,6 +28,19 @@ def spoken(lang, text):
     """Text sent to TTS: small fixes so the voice reads numbers and symbols naturally."""
     t = text.replace("—", ",").replace("«", "").replace("»", "")
     t = t.replace("₸", " тенге" if lang == "ru" else " теңге")
+    t = t.replace("~", "примерно " if lang == "ru" else "шамамен ")
+    t = re.sub(r"(\d) мин\b", r"\1 минут", t)
+    t = t.replace("(", ", ").replace(")", "")
+    t = t.replace("–", " до " if lang == "ru" else " мен ")
+    if lang == "kk":
+        t = re.sub(r"№(\d+) автобус", r"\1-нөмірлі автобус", t)
+    if lang == "ru":
+        def mins(m):
+            n = int(m.group(1)); a, b = n % 10, n % 100
+            f = "минуту" if a == 1 and b != 11 else "минуты" if 2 <= a <= 4 and not 12 <= b <= 14 else "минут"
+            return f"{n} {f}"
+        t = re.sub(r"(\d+) минут\b", mins, t)
+    t = re.sub(r"\s+,", ",", t)
     return re.sub(r"\s+", " ", t).strip()
 
 
