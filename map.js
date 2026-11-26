@@ -268,5 +268,23 @@
     t.hidden = false;
   }
 
-  window.LiveMap = { load, create, measure, pointAt, headingAt, slice, rotate, tag, reduce, coarse };
+  /* A small still map with one point: preview of an address found by the geocoder */
+  function mini(el, pt, label) {
+    const L = window.L;
+    if (!L || !L.map) return null;
+    if (el._lmMini) { el._lmMini.remove(); el._lmMini = null; }
+    const map = L.map(el, {
+      zoomControl: false, attributionControl: false, dragging: false, touchZoom: false, scrollWheelZoom: false,
+      doubleClickZoom: false, boxZoom: false, keyboard: false, tap: false,
+      fadeAnimation: !reduce, zoomAnimation: false, markerZoomAnimation: false
+    }).setView(pt, 16);
+    L.tileLayer(TILES, { maxZoom: 19, className: "lm-base", referrerPolicy: "strict-origin-when-cross-origin" }).addTo(map);
+    L.control.attribution({ position: "bottomright", prefix: false }).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>').addTo(map);
+    L.marker(pt, { icon: ICON.pinB(label), interactive: false, keyboard: false }).addTo(map);
+    el._lmMini = map;
+    setTimeout(() => { map.invalidateSize({ pan: false }); map.setView(pt, 16, { animate: false }); }, 60);
+    return map;
+  }
+
+  window.LiveMap = { load, create, mini, measure, pointAt, headingAt, slice, rotate, tag, reduce, coarse };
 })();

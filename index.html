@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Manrope:wght@500;600;700;800&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=202611261834" />
+  <link rel="stylesheet" href="styles.css?v=202611261913" />
 </head>
 <body>
   <!-- Desktop navigation (hidden on phones) -->
@@ -127,10 +127,22 @@
           <span class="city-pill-txt"><small data-i18n="city.label">Город</small><b data-city-name>Алматы</b></span>
           <span class="city-pill-go" data-i18n="city.change">Сменить</span>
         </button>
-        <div class="addr">
-          <div class="addr-row"><span class="dot dot-from"></span><div><small data-i18n="taxi.from">Откуда</small><b id="taxiFrom"></b></div></div>
-          <div class="addr-row"><span class="dot dot-to"></span><div><small data-i18n="taxi.to">Куда</small><b id="taxiTo"></b></div></div>
+        <div class="addr addr-edit" id="taxiAddr">
+          <button type="button" class="addr-row" data-trip-edit="from" aria-expanded="false" aria-controls="taxiEdit"><span class="dot dot-from"></span><div><small data-i18n="taxi.from">Откуда</small><b id="taxiFrom"></b></div><span class="addr-pen" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.5 5.5l4 4L9 19H5v-4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span></button>
+          <button type="button" class="addr-row" data-trip-edit="to" aria-expanded="false" aria-controls="taxiEdit"><span class="dot dot-to"></span><div><small data-i18n="taxi.to">Куда</small><b id="taxiTo"></b></div><span class="addr-pen" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.5 5.5l4 4L9 19H5v-4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span></button>
         </div>
+        <p class="addr-note" id="taxiNote" hidden></p>
+        <div class="trip-edit" id="taxiEdit" hidden>
+          <label class="pf-field">
+            <span id="taxiEditLbl"></span>
+            <span class="pf-input"><input id="taxiEditInput" type="text" autocomplete="off" maxlength="80" enterkeyhint="search" /><button type="button" class="pf-mic" data-dictate="taxiEditInput" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+          </label>
+          <p class="geo-status" id="taxiEditStatus" aria-live="polite" hidden></p>
+          <div class="geo-sug" id="taxiEditSug"></div>
+          <div class="trip-quick" id="taxiEditQuick"></div>
+          <button type="button" class="btn-ghost trip-close" id="taxiEditClose" data-i18n="trip.close">Закрыть</button>
+        </div>
+        <button type="button" class="pill-btn trip-reset" id="taxiReset" data-i18n="trip.reset" hidden>Сбросить свои адреса</button>
         <div class="chips" id="taxiDest"></div>
         <div class="stats">
           <div class="stat"><small data-i18n="taxi.price">Стоимость</small><b id="taxiPrice"></b></div>
@@ -188,10 +200,22 @@
           <span class="city-pill-txt"><small data-i18n="city.label">Город</small><b data-city-name>Алматы</b></span>
           <span class="city-pill-go" data-i18n="city.change">Сменить</span>
         </button>
-        <div class="addr">
+        <div class="addr addr-edit" id="routeAddr">
           <div class="addr-row"><span class="dot dot-from"></span><div><small data-i18n="taxi.from">Откуда</small><b id="routeFrom"></b></div></div>
-          <div class="addr-row"><span class="dot dot-to"></span><div><small data-i18n="taxi.to">Куда</small><b id="routeTo"></b></div></div>
+          <button type="button" class="addr-row" data-trip-edit="to" aria-expanded="false" aria-controls="routeEdit"><span class="dot dot-to"></span><div><small data-i18n="taxi.to">Куда</small><b id="routeTo"></b></div><span class="addr-pen" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14.5 5.5l4 4L9 19H5v-4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></span></button>
         </div>
+        <p class="addr-note" id="routeNote" hidden></p>
+        <div class="trip-edit" id="routeEdit" hidden>
+          <label class="pf-field">
+            <span id="routeEditLbl"></span>
+            <span class="pf-input"><input id="routeEditInput" type="text" autocomplete="off" maxlength="80" enterkeyhint="search" /><button type="button" class="pf-mic" data-dictate="routeEditInput" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+          </label>
+          <p class="geo-status" id="routeEditStatus" aria-live="polite" hidden></p>
+          <div class="geo-sug" id="routeEditSug"></div>
+          <div class="trip-quick" id="routeEditQuick"></div>
+          <button type="button" class="btn-ghost trip-close" id="routeEditClose" data-i18n="trip.close">Закрыть</button>
+        </div>
+        <button type="button" class="pill-btn trip-reset" id="routeReset" data-i18n="trip.reset" hidden>Сбросить свои адреса</button>
         <div class="chips" id="routeDest"></div>
         <div class="stats">
           <div class="stat stat-bus"><small data-i18n="route.bus">Автобус</small><b id="routeBus"></b></div>
@@ -234,6 +258,7 @@
         </div>
       </div>
       <div class="sheet">
+        <div class="fam-role" id="famRole" hidden></div>
         <h3 class="sec" data-i18n="pf.card">Данные пользователя</h3>
         <div class="card pf-summary" id="famProfile"></div>
 
@@ -281,18 +306,48 @@
           <small id="pfKicker"></small>
           <h2 id="pfTitle"></h2>
           <p id="pfLead"></p>
-          <div class="pf-dots" id="pfDots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <div class="pf-dots" id="pfDots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
         </div>
       </div>
       <div class="sheet">
         <form class="pf-form" id="pfForm" novalidate autocomplete="on">
           <fieldset class="pf-step" data-pf-step="0">
-            <legend class="sec" data-i18n="pf.s0">О вас</legend>
+            <legend class="sec" data-i18n="pf.s0">Кто заполняет?</legend>
+            <div class="pf-roles" role="radiogroup" aria-label="Кто заполняет?" data-i18n-aria="pf.s0">
+              <button type="button" class="pf-role" role="radio" aria-checked="false" data-pf-role="self"><span class="pf-role-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M4.5 20.5c1.2-4 4.2-6 7.5-6s6.3 2 7.5 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span><span class="pf-role-txt"><b data-i18n="pf.r.self">Я сам(а) пользуюсь помощником</b><small data-i18n="pf.r.selfD">Заполняю для себя</small></span><span class="pf-role-tick" aria-hidden="true"></span></button>
+              <button type="button" class="pf-role" role="radio" aria-checked="false" data-pf-role="guardian"><span class="pf-role-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8.5" cy="8" r="3.3" fill="none" stroke="currentColor" stroke-width="2.1"/><circle cx="16.5" cy="9.5" r="2.6" fill="none" stroke="currentColor" stroke-width="2.1"/><path d="M2.8 20c.9-3.4 3.2-5.2 5.7-5.2s4.8 1.8 5.7 5.2M14 15.2c.8-.5 1.6-.7 2.5-.7 2 0 3.7 1.4 4.4 4.5" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg></span><span class="pf-role-txt"><b data-i18n="pf.r.guardian">Я опекун / родственник</b><small data-i18n="pf.r.guardianD">Заполняю за маму, папу или подопечного</small></span><span class="pf-role-tick" aria-hidden="true"></span></button>
+              <button type="button" class="pf-role" role="radio" aria-checked="false" data-pf-role="staff"><span class="pf-role-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V9.5L12 4l8 5.5V20z" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/><path d="M12 9.5v6M9 12.5h6" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg></span><span class="pf-role-txt"><b data-i18n="pf.r.staff">Я сотрудник центра ухода</b><small data-i18n="pf.r.staffD">Настраиваю помощник для подопечного центра</small></span><span class="pf-role-tick" aria-hidden="true"></span></button>
+            </div>
+            <div class="card pf-card pf-helper" data-pf-helper="guardian" hidden>
+              <b class="pf-contact-t" data-i18n="pf.gT">О вас — вам позвоним первым</b>
+              <label class="pf-field">
+                <span data-i18n="pf.gName">Ваше имя</span>
+                <span class="pf-input"><input name="gName" autocomplete="name" maxlength="30" /><button type="button" class="pf-mic" data-dictate="gName" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+              </label>
+              <label class="pf-field"><span data-i18n="pf.gRel">Кем вы приходитесь подопечному</span><select name="gRel" data-rel-select="guardian"></select></label>
+              <label class="pf-field"><span data-i18n="pf.gPhone">Ваш телефон</span><input name="gPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+7 7__ ___ __ __" /></label>
+            </div>
+            <div class="card pf-card pf-helper" data-pf-helper="staff" hidden>
+              <b class="pf-contact-t" data-i18n="pf.sT">Центр ухода — ему позвоним первым</b>
+              <label class="pf-field">
+                <span data-i18n="pf.sOrg">Название центра</span>
+                <span class="pf-input"><input name="sOrg" autocomplete="organization" maxlength="40" /><button type="button" class="pf-mic" data-dictate="sOrg" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+              </label>
+              <label class="pf-field">
+                <span data-i18n="pf.sName">Ваше имя</span>
+                <span class="pf-input"><input name="sName" autocomplete="name" maxlength="30" /><button type="button" class="pf-mic" data-dictate="sName" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+              </label>
+              <label class="pf-field"><span data-i18n="pf.sPhone">Рабочий телефон</span><input name="sPhone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+7 7__ ___ __ __" /></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="pf-step" data-pf-step="1">
+            <legend class="sec" id="pfS1">О вас</legend>
             <div class="card pf-card">
               <label class="pf-field">
-                <span data-i18n="pf.name">Как к вам обращаться?</span>
+                <span id="pfNameLbl">Как к вам обращаться?</span>
                 <span class="pf-input"><input id="pfName" name="name" autocomplete="given-name" required maxlength="40" /><button type="button" class="pf-mic" data-dictate="pfName" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
-                <small class="pf-hint" data-i18n="pf.nameHint">Например: Айгуль апа или Серик ага</small>
+                <small class="pf-hint" id="pfNameHint">Например: Айгуль апа или Серик ага</small>
               </label>
               <div class="pf-field">
                 <span data-i18n="pf.lang">Язык помощника</span>
@@ -304,24 +359,26 @@
             </div>
           </fieldset>
 
-          <fieldset class="pf-step" data-pf-step="1">
-            <legend class="sec" data-i18n="pf.s1">Ваш город</legend>
+          <fieldset class="pf-step" data-pf-step="2">
+            <legend class="sec" id="pfS2">Ваш город</legend>
             <div class="card pf-card">
               <label class="pf-field">
-                <span data-i18n="pf.city">Где вы живёте?</span>
+                <span id="pfCityLbl">Где вы живёте?</span>
                 <select id="pfCity" name="city"></select>
                 <small class="pf-hint" data-i18n="pf.cityHint">Такси, маршруты и магазины будут из этого города</small>
               </label>
             </div>
           </fieldset>
 
-          <fieldset class="pf-step" data-pf-step="2">
-            <legend class="sec" data-i18n="pf.s2">Домашний адрес</legend>
+          <fieldset class="pf-step" data-pf-step="3">
+            <legend class="sec" id="pfS3">Ваш адрес</legend>
             <div class="card pf-card">
               <label class="pf-field">
                 <span data-i18n="pf.street">Улица и дом</span>
-                <span class="pf-input"><input id="pfHome" name="home" autocomplete="street-address" required maxlength="80" /><button type="button" class="pf-mic" data-dictate="pfHome" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+                <span class="pf-input"><input id="pfHome" name="home" autocomplete="off" required maxlength="80" /><button type="button" class="pf-mic" data-dictate="pfHome" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+                <small class="pf-hint" data-i18n="pf.streetHint">Например: ул. Абая, 150 — мы найдём дом на карте</small>
               </label>
+              <div class="geo-box" id="pfHomeGeo"></div>
               <label class="pf-field pf-short">
                 <span data-i18n="pf.flat">Квартира</span>
                 <input id="pfFlat" name="flat" inputmode="numeric" maxlength="8" />
@@ -330,20 +387,22 @@
             </div>
           </fieldset>
 
-          <fieldset class="pf-step" data-pf-step="3">
+          <fieldset class="pf-step" data-pf-step="4">
             <legend class="sec" data-i18n="pf.s3">Близкие на связи</legend>
             <div class="card pf-card pf-contact" data-pf-contact="0">
-              <b class="pf-contact-t" data-i18n="pf.c1">Первый, кому звонить</b>
-              <label class="pf-field">
+              <b class="pf-contact-t" id="pfC1T">Первый, кому звонить</b>
+              <p class="pf-me" id="pfMe" hidden></p>
+              <label class="pf-field pf-c0own">
                 <span data-i18n="pf.cname">Имя</span>
-                <span class="pf-input"><input name="c0name" required maxlength="30" /><button type="button" class="pf-mic" data-dictate="c0name" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+                <span class="pf-input"><input name="c0name" maxlength="30" /><button type="button" class="pf-mic" data-dictate="c0name" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
               </label>
-              <label class="pf-field"><span data-i18n="pf.rel">Кем приходится</span><select name="c0rel" data-rel-select></select></label>
-              <label class="pf-field"><span data-i18n="pf.phone">Телефон</span><input name="c0phone" type="tel" inputmode="tel" autocomplete="tel" required maxlength="20" placeholder="+7 7__ ___ __ __" /></label>
+              <label class="pf-field pf-c0own"><span data-i18n="pf.rel">Кем приходится</span><select name="c0rel" data-rel-select></select></label>
+              <label class="pf-field pf-c0own"><span data-i18n="pf.phone">Телефон</span><input name="c0phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+7 7__ ___ __ __" /></label>
               <label class="pf-field">
-                <span data-i18n="pf.caddr">Адрес (чтобы ездить в гости) — необязательно</span>
-                <span class="pf-input"><input name="c0addr" maxlength="80" /><button type="button" class="pf-mic" data-dictate="c0addr" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
+                <span id="pfCaddrLbl">Адрес (чтобы ездить в гости) — необязательно</span>
+                <span class="pf-input"><input name="c0addr" maxlength="80" autocomplete="off" /><button type="button" class="pf-mic" data-dictate="c0addr" aria-label="Сказать голосом" data-i18n-aria="pf.dictate"></button></span>
               </label>
+              <div class="geo-box" id="pfC0Geo"></div>
             </div>
             <div class="card pf-card pf-contact" data-pf-contact="1">
               <b class="pf-contact-t" data-i18n="pf.c2">Второй — необязательно</b>
@@ -396,12 +455,13 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="i18n.js?v=202611261834"></script>
-  <script src="art.js?v=202611261834"></script>
-  <script src="voice/manifest.js?v=202611261834"></script>
-  <script src="routes.js?v=202611261834"></script>
-  <script src="cities.js?v=202611261834"></script>
-  <script src="map.js?v=202611261834"></script>
-  <script src="app.js?v=202611261834"></script>
+  <script src="i18n.js?v=202611261913"></script>
+  <script src="art.js?v=202611261913"></script>
+  <script src="voice/manifest.js?v=202611261913"></script>
+  <script src="routes.js?v=202611261913"></script>
+  <script src="cities.js?v=202611261913"></script>
+  <script src="map.js?v=202611261913"></script>
+  <script src="geo.js?v=202611261913"></script>
+  <script src="app.js?v=202611261913"></script>
 </body>
 </html>

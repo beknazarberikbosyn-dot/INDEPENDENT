@@ -41,6 +41,7 @@
     settings: Object.assign({}, DEFAULTS, saved, { services: Object.assign({}, DEFAULTS.services, saved.services || {}) }),
     log: store.get("log", []),
     taxi: { dest: "home", status: "draft", quote: null, ride: null, phase: "wait" },
+    trip: { from: null, to: null },       // own «Откуда / Куда» typed by the user (current city only)
     food: { items: null, status: "draft", quote: null },
     route: { dest: "clinic", quote: null },
     services: { kind: "plumber", status: "draft", quote: null }
@@ -68,20 +69,30 @@
     spouse:        { ru: { nom: "супруг(а)", dat: "супругу", to: "К супругу" }, kk: { nom: "жұбайы", dat: "жұбайыңызға", to: "Жұбайыма" }, words: "муж|жен[аеуы]|супруг|жұбай|күйеу|әйел" },
     sister:        { ru: { nom: "сестра", dat: "сестре", to: "К сестре" }, kk: { nom: "әпкесі", dat: "әпкеңізге", to: "Әпкеме" }, fem: true, words: "сестр|әпке|сіңлі|қарындас" },
     brother:       { ru: { nom: "брат", dat: "брату", to: "К брату" }, kk: { nom: "бауыры", dat: "бауырыңызға", to: "Бауырыма" }, words: "брат|бауыр|аға|іні" },
-    other:         { ru: { nom: "близкий человек", dat: "близкому", to: "К близким" }, kk: { nom: "жақыны", dat: "жақыныңызға", to: "Жақындарыма" }, words: "близк|родн|жақын|туыс" }
+    other:         { ru: { nom: "близкий человек", dat: "близкому", to: "К близким" }, kk: { nom: "жақыны", dat: "жақыныңызға", to: "Жақындарыма" }, words: "близк|родн|жақын|туыс" },
+    // a care-centre employee registered the user (role "staff"): the centre is the first to call
+    centre:        { ru: { nom: "центр ухода", dat: "центру ухода", to: "В центр ухода" }, kk: { nom: "күтім орталығы", dat: "күтім орталығына", to: "Орталыққа" }, words: "центр|орталы|күтім" }
+  };
+  // Who filled in the registration: the elderly person, a guardian / relative, or a care-centre employee
+  const ROLES = {
+    self:     { ru: "сам(а) пользователь", kk: "пайдаланушының өзі" },
+    guardian: { ru: "опекун / родственник", kk: "қамқоршы / туыс" },
+    staff:    { ru: "сотрудник центра ухода", kk: "күтім орталығының қызметкері" }
   };
   const DEMO_PROFILE = {
-    demo: true, name: "Айгуль", lang: "ru", city: "almaty", home: "", flat: "",
+    demo: true, role: "self", name: "Айгуль", lang: "ru", city: "almaty", home: "", flat: "",
     contacts: [{ name: "Мадина", rel: "daughter", phone: "+7 701 000 00 21", addr: "" }, { name: "Ерлан", rel: "son", phone: "+7 777 000 00 08", addr: "" }]
   };
   const profile = () => state.settings.profile || DEMO_PROFILE;
   const userName = () => profile().name || "";
+  const roleOf = () => (profile().role && ROLES[profile().role] ? profile().role : "self");
   const escRx = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   function buildContacts(pf) {
     return pf.contacts.filter((c) => c && c.name).map((c, i) => {
       const r = REL[c.rel] || REL.other;
-      return { id: "c" + i, name: c.name, rel: c.rel, fem: !!r.fem, addr: c.addr || "",
-        ru: `${c.name}, ${r.ru.nom}`, kk: `${c.name}, ${r.kk.nom}`, short: { ru: r.ru.dat, kk: r.kk.dat },
+      const org = c.org ? ` «${c.org}»` : "";
+      return { id: "c" + i, name: c.name, rel: c.rel, fem: !!r.fem, addr: c.addr || "", geo: c.geo || null, org: c.org || "", me: !!c.me,
+        ru: `${c.name}, ${r.ru.nom}${org}`, kk: `${c.name}, ${r.kk.nom}${org}`, short: { ru: r.ru.dat, kk: r.kk.dat },
         phone: c.phone || "—", av: c.name.trim().charAt(0).toUpperCase(), color: ["salmon", "blue", "mint"][i % 3] };
     });
   }
@@ -200,6 +211,7 @@
      ========================================================== */
   function applyLang() {
     document.documentElement.lang = state.lang;
+    if (window.GEO) window.GEO.setLang(state.lang);
     $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
     $$("[data-i18n-aria]").forEach((el) => { el.setAttribute("aria-label", t(el.dataset.i18nAria)); });
     $("#typeField").placeholder = t("type.ph");
@@ -567,15 +579,24 @@
     // 4) Categories
     const dest = findDest(s);
     const kind = findKind(s);
+    // 4a) an address instead of a usual place: «такси до улицы Абая 150», «Абай көшесі 150-ге такси»
+    if ((RX.taxi.test(s) || RX.route.test(s)) && (!dest || dest === "home") && GEOX && looksLikeAddress(s)) {
+      const q = addrPart(text);
+      if (q.replace(/[^0-9a-zа-яёәғқңөұүһі]/gi, "").length >= 3 && /[a-zа-яёәғқңөұүһі]{3}/i.test(q))
+        return askAddress(q, RX.route.test(s) && !RX.taxi.test(s) ? "route" : "taxi", quote);
+    }
     if (RX.route.test(s)) {
       state.route.dest = dest || state.route.dest; state.route.quote = quote;
       return reply(L(`Показываю, как добраться: ${DEST[state.route.dest].chip.ru.toLowerCase()}.`, `Қалай жетуге болатынын көрсетемін: ${DEST[state.route.dest].chip.kk.toLowerCase()}.`), "route");
     }
     if (RX.taxi.test(s) || (dest && !RX.food.test(s) && !kind)) {
+      if (state.taxi.status === "done" || state.taxi.status === "pending") return reply(L("Поездка уже идёт. Сначала отмените её.", "Сапар жүріп жатыр. Алдымен оны болдырмаңыз."), "taxi");
       Object.assign(state.taxi, { dest: dest || "home", status: "draft", quote });
-      const d = DEST[state.taxi.dest];
-      return reply(L(`Нашла такси, примерно ${d.price} тенге, приедет через ${d.eta} ${plural(d.eta, ["минуту", "минуты", "минут"])}. Вызвать?`,
-                     `Такси таптым, шамамен ${d.price} теңге, ${d.eta} минутта келеді. Шақырайын ба?`), "taxi");
+      const q = taxiQuote(state.taxi.dest);
+      // own addresses: price / time differ, so the voice says a fixed phrase (recorded clip) and the screen shows the numbers
+      if (q.dyn) return reply(L("Нашла такси. Цена и время — на экране. Вызвать?", "Такси таптым. Бағасы мен уақыты — экранда. Шақырайын ба?"), "taxi");
+      return reply(L(`Нашла такси, примерно ${q.price} тенге, приедет через ${q.eta} ${plural(q.eta, ["минуту", "минуты", "минут"])}. Вызвать?`,
+                     `Такси таптым, шамамен ${q.price} теңге, ${q.eta} минутта келеді. Шақырайын ба?`), "taxi");
     }
     if (kind) {
       Object.assign(state.services, { kind, status: "draft", quote });
@@ -723,34 +744,132 @@
      tiles cannot load, the screens keep the decorative SVG and the texts still update.
      ========================================================== */
   const cityRoutes = () => (KZ ? KZ.routes[state.settings.city] || null : window.ROUTES || null);
-  let ROUTES = cityRoutes();
   const LM = window.LiveMap || null;
+  const GEOX = window.GEO || null;
+  // BASE: the city's precomputed demo streets (shared, never mutated).
+  // ROUTES: what the screens use — BASE, or a copy with the user's real home / relative / own trip.
+  let BASE = cityRoutes();
+  let ROUTES = null;
   // the current city's routes: already embedded, or fetched once (routes-<city>.js)
   function ensureRoutes() {
     const id = state.settings.city;
-    if (ROUTES || !KZ) return Promise.resolve(ROUTES);
+    if (BASE || !KZ) { if (!ROUTES && BASE) ROUTES = buildRoutes(); return Promise.resolve(ROUTES); }
     return KZ.loadRoutes(id).then((r) => {
-      if (r && state.settings.city === id && !ROUTES) { ROUTES = r; render(); }
+      if (r && state.settings.city === id && !BASE) { BASE = r; ROUTES = buildRoutes(); render(); }
       return ROUTES;
     });
   }
+
+  /* ---- The user's own points: real home / relative from the profile, own «Откуда / Куда» ---- */
+  const ptOf = (g) => (g && g.city === state.settings.city && isFinite(g.lat) && isFinite(g.lng) ? [g.lat, g.lng] : null);
+  const homePt = () => (profile().demo ? null : ptOf(profile().homeGeo));
+  const kidPt = () => { const c = state.settings.contacts[0]; return c ? ptOf(c.geo) : null; };
+  // car leg a → b: the cached street route, or a gentle approximate line while OSRM answers
+  const legAsked = {};
+  let rebuildTimer = null;
+  function leg(a, b) {
+    if (!GEOX) return { pts: [a, b], len: Math.round((LM ? LM.measure([a, b]).total : 1000) * 1.3), approx: true };
+    const hit = GEOX.cachedRoute(a, b);
+    if (hit) return hit;
+    const k = a.join() + ";" + b.join();
+    if (!legAsked[k]) {
+      legAsked[k] = 1;
+      GEOX.route(a, b).then((r) => { if (r && !r.approx) { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(rebuildRoutes, 120); } });
+    }
+    return GEOX.approx(a, b);
+  }
+  function mkTaxi(a, b) {
+    const main = leg(a, b), pick = leg(GEOX ? GEOX.offset(a, 700, 35) : [a[0] + 0.0055, a[1] + 0.005], a);
+    return { len: main.len, pickupLen: pick.len, route: main.pts, pickup: pick.pts, approx: !!(main.approx || pick.approx) };
+  }
+  // approximate bus trip: the driving path is the bus corridor, short straight walks at both ends,
+  // stops every ~550 m, the bus comes in along a short stretch before the first stop
+  function mkBus(a, b) {
+    const path = leg(a, b), m = LM.measure(path.pts), tot = m.total;
+    const cut = tot < 900 ? tot * 0.18 : Math.min(320, tot * 0.12);
+    let bus = LM.slice(m, cut, tot - cut);
+    if (bus.length < 2) bus = [a, b];
+    const bm = LM.measure(bus), stops = [];
+    for (let d = 550; d < bm.total - 250; d += 550) stops.push(LM.pointAt(bm, d));
+    const h = LM.headingAt(bm, 0);
+    const back = GEOX ? GEOX.offset(bus[0], 650, h + 180) : bus[0];
+    const walk = (p, q) => Math.round(LM.measure([p, q]).total * 1.25);
+    return { len: Math.round(bm.total), walk1Len: walk(a, bus[0]), walk2Len: walk(bus[bus.length - 1], b), stopsCount: stops.length + 1,
+      walk1: [a, bus[0]], bus, walk2: [bus[bus.length - 1], b], approach: [back, bus[0]], stops, approx: !!path.approx };
+  }
+  function buildRoutes() {
+    const B = BASE;
+    if (!B || !LM) return B || null;
+    const home = homePt(), kid = kidPt(), tr = state.trip;
+    const cFrom = tr.from ? [tr.from.lat, tr.from.lng] : null, cTo = tr.to ? [tr.to.lat, tr.to.lng] : null;
+    if (!home && !kid && !cFrom && !cTo) return B;
+    const R = { points: Object.assign({}, B.points), taxi: Object.assign({}, B.taxi), bus: Object.assign({}, B.bus), over: { taxi: {}, bus: {} } };
+    if (home) R.points.home = home;
+    if (kid) R.points.kid = kid;
+    if (cTo) R.points.custom = cTo;
+    if (cFrom) R.points.customFrom = cFrom;
+    Object.keys(DEST).forEach((k) => {
+      const to = R.points[k];
+      if (!to) return;
+      if (cFrom || home || k === "custom" || (kid && k === "kid")) {
+        R.taxi[k] = mkTaxi(cFrom || (k === "home" ? R.points.origin : R.points.home), to);
+        R.over.taxi[k] = true;
+      }
+      if (home || k === "custom" || (kid && k === "kid")) {
+        R.bus[k] = mkBus(k === "home" ? R.points.origin : R.points.home, to);
+        R.over.bus[k] = true;
+      }
+    });
+    return R;
+  }
+  // new geometry (profile saved, own trip chosen, a street route arrived): redraw both maps
+  function rebuildRoutes() {
+    ROUTES = buildRoutes();
+    taxiMap.sig = ""; routeMap.sig = "";
+    Object.keys(geoCache).forEach((k) => delete geoCache[k]);
+    render();
+  }
+
   const DEMO = 8;                       // demo clock: 1 real second ≈ 8 simulated seconds
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const clock = (sec) => { const s = Math.max(0, Math.ceil(sec)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
   const ease = (p) => 0.75 * p + 0.25 * (0.5 - Math.cos(Math.PI * p) / 2);
   const setText = (node, v) => { if (node && node.textContent !== v) node.textContent = v; };
   const placeName = (k) => L(DEST[k].ru.split(" — ")[0], DEST[k].kk.split(" — ")[0]);
-  const fromPoint = (k) => (k === "home" ? ROUTES.points.origin : ROUTES.points.home);
+  // taxi: an own «Откуда» wins; bus: from home (or from the city's start point when going home)
+  const fromPoint = (k) => (state.trip.from && ROUTES.points.customFrom ? ROUTES.points.customFrom : k === "home" ? ROUTES.points.origin : ROUTES.points.home);
+  const busFrom = (k) => (k === "home" ? ROUTES.points.origin : ROUTES.points.home);
   const plural = (n, f) => { const a = n % 10, b = n % 100; return f[a === 1 && b !== 11 ? 0 : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 1 : 2]; };
   const geoCache = {};
   const geo = (key, pts) => { const k = state.settings.city + key; return geoCache[k] || (geoCache[k] = LM.measure(pts)); };
   const hasRoutes = () => !!(ROUTES && LM);
+  // Price / pickup time: fixed for the demo trips (spoken by recorded clips), from the real distance
+  // for the user's own addresses (400 ₸ + 160 ₸/km, rounded to 50; 3–9 min) — then the voice says «на экране»
+  function taxiQuote(k) {
+    const d = DEST[k], T = ROUTES && ROUTES.taxi[k];
+    const dyn = k === "custom" || !!(ROUTES && ROUTES.over && ROUTES.over.taxi[k]);
+    if (!dyn || !d) return { price: d ? d.price : 0, eta: d ? d.eta : 5, dyn: false };
+    let len = T ? T.len : 0, pl = T ? T.pickupLen : 900;
+    if (!T && GEOX && state.trip.to) {
+      const f = state.trip.from || profile().homeGeo || { lat: cityOf().center[0], lng: cityOf().center[1] };
+      len = GEOX.haversine(f, state.trip.to) * 1.35;
+    }
+    return { price: Math.max(600, Math.round((400 + 160 * len / 1000) / 50) * 50), eta: clamp(Math.round(2 + pl / 300), 3, 9), dyn: true };
+  }
+  // stop names: an approximate bus leg has no real stop names
+  function stopNames(k) {
+    const d = DEST[k], over = ROUTES && ROUTES.over && ROUTES.over.bus[k];
+    if (!over) return { from: d.from, stop: d.stop };
+    const NEAR_HOME = { ru: "«У дома»", kk: "«Үй жанындағы»" }, NEAR = { ru: "«Рядом с адресом»", kk: "«Мекенжай жанындағы»" };
+    return { from: k === "home" ? d.from : homePt() ? NEAR_HOME : d.from, stop: k === "home" ? NEAR_HOME : (k === "custom" || (k === "kid" && kidPt())) ? NEAR : d.stop };
+  }
+  ROUTES = buildRoutes();
 
   /* ---- Taxi ride: wait → pickup → arrived → trip → finished ---- */
   function ridePlan(dest) {
-    const d = DEST[dest];
-    const len = hasRoutes() ? ROUTES.taxi[dest].len : d.eta * 900;
-    const pickupSim = d.eta * 60, tripSim = Math.max(5, Math.round(len / 400)) * 60;   // ~24 km/h in town
+    const q = taxiQuote(dest);
+    const len = hasRoutes() && ROUTES.taxi[dest] ? ROUTES.taxi[dest].len : q.eta * 900;
+    const pickupSim = q.eta * 60, tripSim = Math.max(5, Math.round(len / 400)) * 60;   // ~24 km/h in town
     return { pickupSim, tripSim, pickupMs: clamp(pickupSim / DEMO, 18, 40) * 1000, waitMs: 6000, tripMs: clamp(tripSim / DEMO, 24, 45) * 1000 };
   }
   function ridePhase(now) {
@@ -778,11 +897,13 @@
     void d;
   }
   function taxiLive(now) {
-    const s = state.taxi, d = DEST[s.dest], r = ridePhase(now);
+    const s = state.taxi, r = ridePhase(now);
+    if (!DEST[s.dest]) return;
+    const eta = taxiQuote(s.dest).eta;
     if (r.phase !== s.phase) { const prev = s.phase; s.phase = r.phase; onRidePhase(prev, r.phase); return; }
     if (state.screen !== "taxi") return;
     const row = {
-      wait:     [t("taxi.eta"), d.eta + " мин", L("Ждёт", "Күтуде"), "wait"],
+      wait:     [t("taxi.eta"), eta + " мин", L("Ждёт", "Күтуде"), "wait"],
       pickup:   [L("Приедет через", "Келуіне қалды"), clock(r.left), L("Едет к вам", "Сізге келе жатыр"), "live"],
       arrived:  [L("Машина", "Көлік"), L("Уже тут", "Келді"), L("Подъехал", "Келіп тұр"), "here"],
       trip:     [L("Доедем через", "Жетуге қалды"), clock(r.left), L("В пути", "Жолда"), "live"],
@@ -793,7 +914,7 @@
     val.classList.toggle("word", !/\d/.test(row[1]));
     setText(st, row[2]);
     if (st.className !== "driver-st " + row[3]) st.className = "driver-st " + row[3];
-    if (taxiMap.car) LM.tag(taxiMap.car, r.phase === "wait" ? d.eta + " мин" : r.phase === "pickup" || r.phase === "trip" ? clock(r.left) : "");
+    if (taxiMap.car) LM.tag(taxiMap.car, r.phase === "wait" ? eta + " мин" : r.phase === "pickup" || r.phase === "trip" ? clock(r.left) : "");
   }
 
   /* ---- Bus on the route screen: approach → at the stop → departs → next one ---- */
@@ -895,6 +1016,7 @@
     const v = maps.taxi;
     if (!v || !ROUTES) return;
     const s = state.taxi, T = ROUTES.taxi[s.dest];
+    if (!T) return;
     const pts =(s.phase === "trip" || s.phase === "finished") ? T.route : T.route.concat(T.pickup);
     v.invalidate(); mapInsets(v);
     v.fit(pts.concat([fromPoint(s.dest), ROUTES.points[s.dest]]), animate);
@@ -903,7 +1025,7 @@
     const v = maps.taxi;
     if (!v || !ROUTES) return;
     const s = state.taxi, sig = state.settings.city + "|" + s.dest + "|" + state.lang;
-    if (sig === taxiMap.sig) return;
+    if (sig === taxiMap.sig || !ROUTES.taxi[s.dest]) return;
     const prev = taxiMap.sig ? taxiMap.sig.split("|") : null;
     const prevDest = prev && prev[0] === state.settings.city ? prev[1] : prev ? "" : null;   // "" = other city: fly
     taxiMap.sig = sig; taxiMap.key = "";
@@ -911,7 +1033,7 @@
     const g = taxiMap.group = v.group(), T = ROUTES.taxi[s.dest];
     v.line(g, T.route, "casing"); v.line(g, T.route, "mid");
     taxiMap.parts = { done: v.line(g, [], "done"), todo: v.line(g, T.route, "dots"), pick: v.line(g, T.pickup, "pickup") };
-    v.marker(g, fromPoint(s.dest), v.icon.pinA(L("Вы здесь", "Сіз осындасыз")), 100);
+    v.marker(g, fromPoint(s.dest), v.icon.pinA(state.trip.from ? L("Отсюда", "Осы жерден") : L("Вы здесь", "Сіз осындасыз")), 100);
     v.marker(g, ROUTES.points[s.dest], v.icon.pinB(placeName(s.dest)), 200);
     taxiMap.car = v.marker(g, T.pickup[0], v.icon.car(), 500);
     mapLabels(v);
@@ -922,6 +1044,7 @@
   function moveTaxi(now) {
     if (!maps.taxi || !taxiMap.car || !ROUTES) return;
     const s = state.taxi, T = ROUTES.taxi[s.dest];
+    if (!T) return;
     const pick = geo("p" + s.dest, T.pickup), route = geo("r" + s.dest, T.route);
     const r = ridePhase(now);
     const p = LM.reduce ? Math.floor(r.p * 4) / 4 : r.p;
@@ -949,7 +1072,9 @@
   function routeFit(animate) {
     const v = maps.route;
     if (!v || !ROUTES) return;
-    const s = state.route, B = ROUTES.bus[s.dest], segs = routeSegments(s.dest);
+    const s = state.route, B = ROUTES.bus[s.dest];
+    if (!B) return;
+    const segs = routeSegments(s.dest);
     v.invalidate(); mapInsets(v);
     if (s.focus == null) v.fit(B.walk1.concat(B.bus, B.walk2, B.approach.slice(0, 1)), animate);
     else v.fit(segs[s.focus], animate, s.focus === 1 ? 16.25 : 17);
@@ -967,12 +1092,12 @@
     const v = maps.route;
     if (!v || !ROUTES) return;
     const s = state.route, sig = state.settings.city + "|" + s.dest + "|" + state.lang;
-    if (sig === routeMap.sig) return;
+    if (sig === routeMap.sig || !ROUTES.bus[s.dest]) return;
     const prev = routeMap.sig ? routeMap.sig.split("|") : null;
     const prevDest = prev && prev[0] === state.settings.city ? prev[1] : prev ? "" : null;   // "" = other city: fly
     routeMap.sig = sig; routeMap.key = "";
     if (routeMap.group) routeMap.group.remove();
-    const g = routeMap.group = v.group(), B = ROUTES.bus[s.dest], d = DEST[s.dest];
+    const g = routeMap.group = v.group(), B = ROUTES.bus[s.dest], d = DEST[s.dest], nm = stopNames(s.dest);
     routeMap.parts = {
       approach: v.line(g, B.approach, "approach"),
       walk1: v.line(g, B.walk1, "walk"),
@@ -981,9 +1106,9 @@
       walk2: v.line(g, B.walk2, "walk")
     };
     B.stops.forEach((p) => v.marker(g, p, v.icon.stop(), 40));
-    v.marker(g, B.bus[0], v.icon.stop(L(d.from.ru, d.from.kk)), 60);
-    v.marker(g, B.bus[B.bus.length - 1], v.icon.stop(L(d.stop.ru, d.stop.kk)), 60);
-    v.marker(g, fromPoint(s.dest), v.icon.pinA(L("Вы здесь", "Сіз осындасыз")), 100);
+    v.marker(g, B.bus[0], v.icon.stop(L(nm.from.ru, nm.from.kk)), 60);
+    v.marker(g, B.bus[B.bus.length - 1], v.icon.stop(L(nm.stop.ru, nm.stop.kk)), 60);
+    v.marker(g, busFrom(s.dest), v.icon.pinA(L("Вы здесь", "Сіз осындасыз")), 100);
     v.marker(g, ROUTES.points[s.dest], v.icon.pinB(placeName(s.dest)), 200);
     routeMap.bus = v.marker(g, B.approach[0], v.icon.bus("№" + d.bus), 500);
     mapLabels(v);
@@ -995,6 +1120,7 @@
   function moveBus(now) {
     if (!maps.route || !routeMap.bus || !ROUTES) return;
     const s = state.route, B = ROUTES.bus[s.dest];
+    if (!B) return;
     const ap = geo("a" + s.dest, B.approach), line = geo("b" + s.dest, B.bus);
     const r = busPhase(now);
     const p = LM.reduce ? Math.floor(r.p * 4) / 4 : r.p;
@@ -1052,31 +1178,52 @@
     $("#meAv").textContent = (userName().charAt(0) || "?").toUpperCase();
   }
 
+  // «Едем домой» / «Едем по адресу»
+  const chipTo = (k) => (k === "custom" ? { ru: "по адресу", kk: "мекенжайға" } : { ru: DEST[k].chip.ru.toLowerCase(), kk: DEST[k].chip.kk });
+  // small note under the addresses: the home pin is the city's demo point until the address is found on the map
+  function approxNote(node, uses) {
+    const pf = profile();
+    const show = uses && !pf.demo && !!pf.home && !homePt();
+    node.hidden = !show;
+    if (show) node.textContent = L("Точка дома на карте примерная — уточните адрес в «Мои данные».", "Картадағы үй нүктесі шамамен — мекенжайды «Менің деректерім» бөлімінде нақтылаңыз.");
+  }
   function renderTaxi() {
-    const s = state.taxi, d = DEST[s.dest];
+    const s = state.taxi;
+    if (!DEST[s.dest]) s.dest = "home";
+    const d = DEST[s.dest], q = taxiQuote(s.dest);
     if (s.status !== "done") { s.ride = null; s.phase = "wait"; }
+    const locked = s.status === "done" || s.status === "pending";
     $('[data-quote="taxi"]').textContent = s.quote || L("Скажите, куда поехать", "Қайда бару керегін айтыңыз");
-    $("#taxiFrom").textContent = s.dest === "home" ? L(ORIGIN.ru, ORIGIN.kk) : L(HOME_SHORT.ru, HOME_SHORT.kk);
+    $("#taxiFrom").textContent = state.trip.from ? state.trip.from.label : s.dest === "home" ? L(ORIGIN.ru, ORIGIN.kk) : L(HOME_SHORT.ru, HOME_SHORT.kk);
     $("#taxiTo").textContent = L(d.ru, d.kk);
-    $("#taxiPrice").textContent = "≈" + money(d.price);
+    $$("#taxiAddr [data-trip-edit]").forEach((b) => { b.disabled = locked; });
+    $("#taxiReset").hidden = locked || !(state.trip.from || state.trip.to);
+    approxNote($("#taxiNote"), !state.trip.from || s.dest === "home");
+    $("#taxiPrice").textContent = "≈" + money(q.price);
     chipRow($("#taxiDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => {
-      if (s.status === "done" || s.status === "pending") return;
-      s.dest = k; s.quote = null; renderTaxi();
+      if (locked) return;
+      s.dest = k; s.quote = null; editors.taxi.close(); renderTaxi();
     });
-    const label = { ru: "Такси: " + d.chip.ru.toLowerCase(), kk: "Такси: " + d.chip.kk.toLowerCase(), btn: L("Да, вызвать", "Иә, шақыру") };
+    const to = chipTo(s.dest);
+    const label = { ru: "Такси: " + to.ru, kk: "Такси: " + to.kk, btn: L("Да, вызвать", "Иә, шақыру") };
     const doneText = {
       arrived: L("Серик подъехал: белая Camry, 777 AKA 01. Выходите не спеша", "Серік келді: ақ Camry, 777 AKA 01. Асықпай шығыңыз"),
-      trip: L(`Едем ${d.chip.ru.toLowerCase()}. Можно отдыхать`, `${d.chip.kk} бара жатырмыз. Демала беріңіз`),
+      trip: L(`Едем ${to.ru}. Можно отдыхать`, `${s.dest === "custom" ? "Мекенжайға" : d.chip.kk} бара жатырмыз. Демала беріңіз`),
       finished: L("Приехали! Хорошего дня", "Жеттік! Күніңіз сәтті өтсін")
-    }[s.phase] || L(`Такси вызвано — Серик будет через ${d.eta} мин`, `Такси шақырылды — Серік ${d.eta} минутта келеді`);
+    }[s.phase] || L(`Такси вызвано — Серик будет через ${q.eta} мин`, `Такси шақырылды — Серік ${q.eta} минутта келеді`);
+    const refund = () => { state.settings.spent = Math.max(0, state.settings.spent - (s.paid != null ? s.paid : q.price)); s.paid = null; };
     const extra = s.phase === "trip" ? null
-      : s.phase === "finished" ? btn("btn-sub", L("Новая поездка", "Жаңа сапар"), () => { s.status = "draft"; renderTaxi(); taxiFit(true); })
-      : btn("btn-sub", L("Отменить поездку", "Сапарды болдырмау"), () => { s.status = "draft"; state.settings.spent -= d.price; save(); renderTaxi(); taxiFit(true); });
-    actions("taxi", "taxi", d.price, label, () => {
-      finishOrder("taxi", d.price, label);
+      : s.phase === "finished" ? btn("btn-sub", L("Новая поездка", "Жаңа сапар"), () => { s.status = "draft"; s.paid = null; renderTaxi(); taxiFit(true); })
+      : btn("btn-sub", L("Отменить поездку", "Сапарды болдырмау"), () => { s.status = "draft"; refund(); save(); renderTaxi(); taxiFit(true); });
+    actions("taxi", "taxi", q.price, label, () => {
+      finishOrder("taxi", q.price, label);
+      s.paid = q.price;
+      editors.taxi.close();
       s.ride = { t0: Date.now(), plan: ridePlan(s.dest) };
       s.phase = "pickup";
-      speak(L(`Такси вызвано. Серик приедет через ${d.eta} ${plural(d.eta, ["минуту", "минуты", "минут"])}.`, `Такси шақырылды. Серік ${d.eta} минутта келеді.`));
+      // own addresses: the numbers are on screen, the phrase stays fixed so the recorded voice can say it
+      speak(q.dyn ? L("Такси вызвано. Время подачи — на экране.", "Такси шақырылды. Келу уақыты — экранда.")
+        : L(`Такси вызвано. Серик приедет через ${q.eta} ${plural(q.eta, ["минуту", "минуты", "минут"])}.`, `Такси шақырылды. Серік ${q.eta} минутта келеді.`));
       renderTaxi();
     }, doneText, extra);
     syncTaxiMap();
@@ -1134,12 +1281,16 @@
   }
 
   function renderRoute() {
-    const s = state.route, d = DEST[s.dest];
+    const s = state.route;
+    if (!DEST[s.dest]) s.dest = "clinic";
+    const d = DEST[s.dest], nm = stopNames(s.dest);
     $('[data-quote="route"]').textContent = s.quote || L("Скажите, куда нужно добраться", "Қайда бару керегін айтыңыз");
     $("#routeFrom").textContent = s.dest === "home" ? L(ORIGIN.ru, ORIGIN.kk) : L(HOME_SHORT.ru, HOME_SHORT.kk);
     $("#routeTo").textContent = L(d.ru, d.kk);
+    $("#routeReset").hidden = !state.trip.to;
+    approxNote($("#routeNote"), true);
     $("#routeBus").textContent = "№" + d.bus;
-    chipRow($("#routeDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => { s.dest = k; s.quote = null; s.focus = null; renderRoute(); });
+    chipRow($("#routeDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => { s.dest = k; s.quote = null; s.focus = null; editors.route.close(); renderRoute(); });
     // minutes on foot (elderly pace ~60 m/min) and bus stops come from the real street geometry
     const B = hasRoutes() ? ROUTES.bus[s.dest] : null;
     const w1 = B ? Math.max(1, Math.round(B.walk1Len / 60)) : 3;
@@ -1148,9 +1299,9 @@
     const ride = B ? Math.max(3, Math.round(B.len / 280)) : stops * 4;
     const MIN = ["минуту", "минуты", "минут"];
     const steps = [
-      L(`Пешком ${w1} ${plural(w1, MIN)} до остановки ${d.from.ru}`, `${d.from.kk} аялдамасына жаяу ${w1} минут`),
+      L(`Пешком ${w1} ${plural(w1, MIN)} до остановки ${nm.from.ru}`, `${nm.from.kk} аялдамасына жаяу ${w1} минут`),
       L(`Автобус №${d.bus}, ${stops} ${plural(stops, ["остановка", "остановки", "остановок"])} (~${ride} мин)`, `№${d.bus} автобус, ${stops} аялдама (~${ride} мин)`),
-      L(`Выйти на остановке ${d.stop.ru}, ${w2} ${plural(w2, MIN)} пешком`, `${d.stop.kk} аялдамасында түсіп, жаяу ${w2} минут`)
+      L(`Выйти на остановке ${nm.stop.ru}, ${w2} ${plural(w2, MIN)} пешком`, `${nm.stop.kk} аялдамасында түсіп, жаяу ${w2} минут`)
     ];
     const ol = $("#routeSteps");
     ol.innerHTML = "";
@@ -1171,6 +1322,161 @@
     }));
     syncRouteMap();
     routeLive(Date.now());
+  }
+
+  /* ==========================================================
+     Own «Откуда / Куда»: tap a row → type or dictate an address (live suggestions in the city),
+     «Моё местоположение», «Дом» or one of the usual places. A typed destination becomes DEST.custom.
+     ========================================================== */
+  const NEAR_ADDR = { ru: "«Рядом с адресом»", kk: "«Мекенжай жанындағы»" };
+  function setCustomTo(r) {
+    const tail = r.district ? " — " + r.district : "";
+    DEST.custom = { rx: /(?!)/, custom: true, ru: r.label + tail, kk: r.label + tail, chip: { ru: "Свой адрес", kk: "Өз мекенжайым" },
+      price: 0, eta: 5, bus: 10 + Math.abs(Math.round(r.lat * 997 + r.lng * 991)) % 80, from: DEST.clinic.from, stop: NEAR_ADDR };
+    state.trip.to = { lat: r.lat, lng: r.lng, label: r.label, city: state.settings.city };
+    if (state.taxi.status === "draft") state.taxi.dest = "custom";
+    state.route.dest = "custom"; state.route.focus = null;
+    rebuildRoutes();
+  }
+  function setCustomFrom(r) {
+    state.trip.from = { lat: r.lat, lng: r.lng, label: r.label, city: state.settings.city };
+    rebuildRoutes();
+  }
+  function clearTrip() {
+    state.trip = { from: null, to: null };
+    delete DEST.custom;
+    if (state.taxi.dest === "custom") state.taxi.dest = "home";
+    if (state.route.dest === "custom") state.route.dest = "clinic";
+    if (typeof editors !== "undefined") { editors.taxi.close(); editors.route.close(); }
+  }
+  function resetTrip() {
+    if (state.taxi.status === "done" || state.taxi.status === "pending") return;
+    clearTrip();
+    rebuildRoutes();
+    toast(L("Вернула обычные адреса", "Әдеттегі мекенжайлар қайтарылды"));
+  }
+
+  function tripEditor(screen) {
+    const box = $(`#${screen}Edit`), input = $(`#${screen}EditInput`), list = $(`#${screen}EditSug`),
+      status = $(`#${screen}EditStatus`), quick = $(`#${screen}EditQuick`), lbl = $(`#${screen}EditLbl`);
+    let which = "to";
+    const setStatus = (txt, cls) => { status.textContent = txt || ""; status.hidden = !txt; status.className = "geo-status" + (cls ? " " + cls : ""); };
+    const sugg = GEOX ? GEOX.suggester((res) => show(res)) : null;
+    function show(res) {
+      list.innerHTML = "";
+      if (!res) return setStatus("");
+      if (res.error === "offline") return setStatus(L("Нет интернета — поиск адреса недоступен. Выберите место ниже.", "Интернет жоқ — мекенжай іздеу қолжетімсіз. Төменнен орын таңдаңыз."), "warn");
+      if (res.error && !res.list.length) return setStatus(L("Карта не ответила. Попробуйте ещё раз или выберите место ниже.", "Карта жауап бермеді. Қайталап көріңіз не төменнен орын таңдаңыз."), "warn");
+      if (!res.list.length) return setStatus(L(`В городе ${cityName()} такой адрес не нашёлся. Проверьте улицу и номер дома.`, `${cityName()} қаласында мұндай мекенжай табылмады. Көше мен үй нөмірін тексеріңіз.`), "warn");
+      setStatus(L("Выберите нужный адрес:", "Керек мекенжайды таңдаңыз:"));
+      res.list.forEach((r) => list.append(sugRow(r, () => choose(r))));
+    }
+    function choose(r) {
+      close();
+      if (which === "from") { setCustomFrom(r); speak(L("Хорошо. Откуда ехать — отметила на карте.", "Жарайды. Қай жерден шығатыныңызды картада белгіледім.")); }
+      else { setCustomTo(r); speak(L("Нашла адрес. Проверьте на карте.", "Мекенжайды таптым. Картадан тексеріңіз.")); }
+      render();
+    }
+    function preset(k) {
+      close();
+      if (which === "from") {
+        if (k === "home" && !state.trip.from) { render(); return; }
+        if (!ROUTES || !ROUTES.points[k]) return;
+        const p = ROUTES.points[k];
+        setCustomFrom({ lat: p[0], lng: p[1], label: k === "home" ? L(HOME_SHORT.ru, HOME_SHORT.kk) : L(DEST[k].ru, DEST[k].kk) });
+      } else {
+        state[screen].dest = k; state[screen].quote = null;
+        if (screen === "route") state.route.focus = null;
+        render();
+      }
+    }
+    function locate() {
+      if (!navigator.geolocation) return setStatus(L("Этот браузер не умеет определять место. Напишите адрес.", "Бұл браузер орынды анықтай алмайды. Мекенжайды жазыңыз."), "warn");
+      setStatus(L("Определяю, где вы…", "Қай жерде екеніңізді анықтап жатырмын…"));
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const p = [+pos.coords.latitude.toFixed(6), +pos.coords.longitude.toFixed(6)];
+        const c = cityOf();
+        if (GEOX && c && !GEOX.inBounds(p, c.bounds))
+          return setStatus(L(`Похоже, вы сейчас не в городе ${cityName()}. Напишите адрес или смените город.`, `${cityName()} қаласында емес сияқтысыз. Мекенжайды жазыңыз не қаланы ауыстырыңыз.`), "warn");
+        const r = GEOX ? await GEOX.reverse(p[0], p[1]) : null;
+        const here = L("Моё местоположение", "Менің орным");
+        which = "from";
+        choose({ lat: p[0], lng: p[1], label: r && r.label ? here + " · " + r.label : here });
+      }, () => setStatus(L("Не удалось узнать, где вы. Разрешите доступ к геопозиции или напишите адрес.", "Орныңызды анықтау мүмкін болмады. Геолокацияға рұқсат беріңіз не мекенжайды жазыңыз."), "warn"),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+    }
+    function renderQuick() {
+      quick.innerHTML = "";
+      const add = (text, fn, cls) => { const b = btn("chip" + (cls ? " " + cls : ""), text, fn); quick.append(b); };
+      if (which === "from") add(L("Моё местоположение", "Менің орным"), locate, "chip-gps");
+      add(L("Дом", "Үй"), () => preset("home"));
+      ["clinic", "kid", "market"].forEach((k) => add(L(DEST[k].chip.ru, DEST[k].chip.kk), () => preset(k)));
+    }
+    input.addEventListener("input", () => {
+      const v = input.value.trim();
+      list.innerHTML = "";
+      setStatus(v.replace(/[^0-9a-zа-яёәғқңөұүһі]/gi, "").length >= 3 && sugg ? L("Ищу…", "Іздеп жатырмын…") : "");
+      if (sugg) sugg(v, state.settings.city);
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    $(`#${screen}EditClose`).addEventListener("click", close);
+    function open(w, pre) {
+      which = w;
+      box.hidden = false;
+      lbl.textContent = w === "from" ? L("Откуда поедем?", "Қайдан шығамыз?") : screen === "taxi" ? L("Куда поехать?", "Қайда барамыз?") : L("Куда нужно добраться?", "Қайда бару керек?");
+      input.placeholder = L("Улица и дом, например: Абая 150", "Көше мен үй, мысалы: Абай 150");
+      $$(`#${screen}Addr [data-trip-edit]`).forEach((b) => b.setAttribute("aria-expanded", String(b.dataset.tripEdit === w)));
+      renderQuick();
+      list.innerHTML = ""; setStatus("");
+      input.value = pre && pre.query ? pre.query : "";
+      if (pre && pre.res) show(pre.res);
+      if (!pre) input.focus();
+      box.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
+    }
+    function close() {
+      box.hidden = true; list.innerHTML = ""; setStatus("");
+      $$(`#${screen}Addr [data-trip-edit]`).forEach((b) => b.setAttribute("aria-expanded", "false"));
+    }
+    return { open, close, get isOpen() { return !box.hidden; } };
+  }
+  var editors = { taxi: tripEditor("taxi"), route: tripEditor("route") };
+  $$("[data-trip-edit]").forEach((b) => b.addEventListener("click", () => {
+    const screen = b.closest("[data-screen]").dataset.screen, ed = editors[screen];
+    if (ed.isOpen && b.getAttribute("aria-expanded") === "true") ed.close(); else ed.open(b.dataset.tripEdit);
+  }));
+  $("#taxiReset").addEventListener("click", resetTrip);
+  $("#routeReset").addEventListener("click", resetTrip);
+
+  // «такси до улицы Абая 150», «отвези на проспект Достык 5», «Абай көшесі 150-ге такси»
+  const STREET_RX = /(улиц|ул\.|(^|\s)ул\s|проспект|просп|пр\.|пр-т|микрорайон|мкр|переул|бульвар|шоссе|көше|даңғыл|шағынауд|к-сі|тас жолы)/i;
+  const looksLikeAddress = (s) => STREET_RX.test(s) || (/\d/.test(s) && !/(минут|час|сағат|человек|адам|тенге|теңге|₸)/i.test(s));
+  const CMD_WORDS = new Set(("пожалуйста вызови вызовите вызвать закажи закажите заказать такси машину отвези отвезите довези довезите подвези подвезите " +
+    "поехать поеду едем хочу мне меня нужно надо можно до на в во к ко по адресу адрес маршрут как доехать добраться дойти проехать автобус автобусом " +
+    "покажи покажите скажи шақыр шақырыңыз шақырыңызшы апар апарыңыз апарыңызшы жеткіз жеткізіңіз барғым келеді қалай барамын бару барам жол көрсет " +
+    "көрсетіңіз бағыт бағытын маған керек өтінемін мекенжай мекенжайға дейін").split(" "));
+  function addrPart(text) {
+    return text.split(/\s+/).filter((w) => !CMD_WORDS.has(w.toLowerCase().replace(/[.,!?«»"]/g, ""))).join(" ").replace(/^[,.\s]+|[,.!?\s]+$/g, "");
+  }
+  function askAddress(q, screen, quote) {
+    if (screen === "taxi" && (state.taxi.status === "done" || state.taxi.status === "pending"))
+      return reply(L("Поездка уже идёт. Сначала отмените её.", "Сапар жүріп жатыр. Алдымен оны болдырмаңыз."), "taxi");
+    const wait = L("Ищу адрес…", "Мекенжайды іздеп жатырмын…");
+    if (state.screen === "home") setReply(wait); else toast(wait);
+    GEOX.search(q, state.settings.city).then((res) => {
+      state[screen].quote = quote;
+      const list = res.list || [], good = list.filter((r) => r.good);
+      const sure = good.length === 1 || (good.length > 1 && good.every((r) => GEOX.haversine(r, good[0]) < 400));
+      if (sure) {
+        setCustomTo(good[0]);
+        if (screen === "taxi") Object.assign(state.taxi, { dest: "custom", status: "draft" });
+        return reply(screen === "taxi" ? L("Нашла такси. Цена и время — на экране. Вызвать?", "Такси таптым. Бағасы мен уақыты — экранда. Шақырайын ба?")
+          : L("Нашла адрес. Проверьте на карте.", "Мекенжайды таптым. Картадан тексеріңіз."), screen);
+      }
+      reply(res.error && !list.length ? L("Нет связи с картой — не могу найти адрес. Выберите место из списка.", "Картамен байланыс жоқ — мекенжайды таба алмаймын. Тізімнен орын таңдаңыз.")
+        : list.length ? L("Уточните адрес — выберите из списка.", "Мекенжайды нақтылаңыз — тізімнен таңдаңыз.")
+        : L("Не нашла такой адрес. Скажите или напишите его иначе.", "Мұндай мекенжай табылмады. Басқаша айтып не жазып көріңіз."), screen);
+      setTimeout(() => editors[screen].open("to", { query: q, res }), state.screen === "home" ? 1000 : 60);
+    });
   }
 
   function renderServices() {
@@ -1237,7 +1543,14 @@
     const pf = profile();
     const sum = $("#famProfile");
     sum.innerHTML = "";
-    [[L("Имя", "Аты"), pf.name], [L("Город", "Қала"), cityName(pf.city)], [L("Адрес", "Мекенжай"), L(DEST.home.ru, DEST.home.kk).replace(/^(Дом|Үй) — /, "")]]
+    const role = roleOf(), me = state.settings.contacts[0] && state.settings.contacts[0].me ? state.settings.contacts[0] : null;
+    const who = L(ROLES[role].ru, ROLES[role].kk) + (me ? (me.org ? ` «${me.org}»` : "") + " — " + me.name : "");
+    const fr = $("#famRole");
+    fr.hidden = role === "self" || !me;
+    if (!fr.hidden) fr.innerHTML = `<b>${esc(role === "staff" ? L("Вы — сотрудник центра ухода", "Сіз — күтім орталығының қызметкерісіз") : L("Вы — опекун", "Сіз — қамқоршысыз"))}</b>` +
+      `<span>${esc(L(`Здесь вы управляете помощником для: ${pf.name}. Вы — первый в списке звонков.`, `Мұнда сіз мына адамның көмекшісін басқарасыз: ${pf.name}. Қоңырау тізімінде сіз біріншісіз.`))}</span>`;
+    [[L("Имя", "Аты"), pf.name], [L("Город", "Қала"), cityName(pf.city)], [L("Адрес", "Мекенжай"), L(DEST.home.ru, DEST.home.kk).replace(/^(Дом|Үй) — /, "")],
+     [L("Кто заполнил", "Кім толтырды"), who]]
       .forEach(([a, b]) => sum.append(el("div", "row", `<div class="row-txt"><small>${esc(a)}</small><b>${esc(b)}</b></div>`)));
     if (pf.demo) sum.append(el("p", "pf-demo-note", esc(L("Сейчас стоят демо-данные. Заполните свои — это займёт минуту.", "Қазір демо-деректер тұр. Өзіңіздікін толтырыңыз — бір минут."))));
     sum.append(btn("pill-btn", L("Изменить данные", "Деректерді өзгерту"), () => go("profile")));
@@ -1307,13 +1620,16 @@
     if (id !== state.settings.city) {
       // a ride under way belongs to the old city: cancel it and give the money back
       const tx = state.taxi;
-      if (tx.status === "done" && tx.phase !== "finished") state.settings.spent = Math.max(0, state.settings.spent - DEST[tx.dest].price);
+      if (tx.status === "done" && tx.phase !== "finished") state.settings.spent = Math.max(0, state.settings.spent - (tx.paid != null ? tx.paid : taxiQuote(tx.dest).price));
       if (tx.status !== "pending") Object.assign(tx, { status: "draft", ride: null, phase: "wait" });
       tx.quote = null;
       Object.assign(state.route, { sim: null, focus: null, quote: null });
       state.settings.city = id; save();
+      // own «Откуда / Куда» belong to the old city
+      clearTrip();
       cityTexts(id);
-      ROUTES = cityRoutes();
+      BASE = cityRoutes();
+      ROUTES = buildRoutes();
       Object.keys(maps).forEach((k) => maps[k].setCity(c.bounds));
       ensureRoutes();
       render();
@@ -1464,17 +1780,140 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#helpOverlay").hidden) closeHelp(); });
 
   /* ==========================================================
-     Profile screen: 4-step registration on first run, one form for later edits
+     Address fields with the real map: live suggestions (Nominatim, bounded to the city),
+     «Мы нашли: … — верно?» before going on, a mini preview of the found point.
+     Without the network the text is kept and the map uses the city's demo point.
      ========================================================== */
-  const PF_STEPS = 4;
+  const PIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6.5-6 6.5-11a6.5 6.5 0 0 0-13 0c0 5 6.5 11 6.5 11z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg>';
+  function sugRow(r, onPick) {
+    const b = el("button", "geo-row");
+    b.type = "button";
+    b.innerHTML = `<span class="geo-row-ico">${PIN_SVG}</span><span class="geo-row-txt"><b>${esc(r.label)}</b>${r.district ? `<small>${esc(r.district)}</small>` : ""}${r.approx ? `<small class="geo-approx">${esc(L("дом на карте не отмечен — точка на улице", "үй картада белгіленбеген — нүкте көшеде"))}</small>` : ""}</span>`;
+    b.addEventListener("click", () => onPick(r));
+    return b;
+  }
+  // a small static map with the found point (when Leaflet is available), otherwise just the text
+  function miniMap(box, g) {
+    if (!box) return;
+    if (!LM || mapBroken) { box.remove(); return; }
+    LM.load().then((ok) => {
+      if (!ok || !box.isConnected) { box.remove(); return; }
+      try { LM.mini(box, [g.lat, g.lng], g.label); } catch (e) { box.remove(); }
+    });
+  }
+  const GEO_MSG = {
+    offline: () => L("Нет связи с картой. Адрес сохраним текстом, точку на карте уточним позже.", "Картамен байланыс жоқ. Мекенжайды мәтінмен сақтаймыз, нүктені кейін нақтылаймыз."),
+    error: () => L("Карта сейчас не отвечает. Адрес сохраним текстом, точку уточним позже.", "Карта қазір жауап бермейді. Мекенжайды мәтінмен сақтаймыз, нүктені кейін нақтылаймыз."),
+    none: (city) => L(`В городе ${city} такой адрес не нашёлся. Проверьте улицу и номер дома — или оставьте как написано: точка дома на карте будет примерной.`,
+      `${city} қаласында мұндай мекенжай табылмады. Көше мен үй нөмірін тексеріңіз — не жазылғандай қалдырыңыз: картадағы үй нүктесі шамамен болады.`)
+  };
+  function addrField(o) {
+    const st = { geo: null, text: "", skip: false, busy: false };
+    o.box.innerHTML = '<p class="geo-status" aria-live="polite" hidden></p><div class="geo-sug"></div><div class="geo-found" hidden></div>';
+    const status = o.box.querySelector(".geo-status"), list = o.box.querySelector(".geo-sug"), found = o.box.querySelector(".geo-found");
+    const setStatus = (txt, cls) => { status.textContent = txt || ""; status.hidden = !txt; status.className = "geo-status" + (cls ? " " + cls : ""); };
+    const cityId = () => o.city() || state.settings.city;
+    const sugg = GEOX ? GEOX.suggester((res) => { if (!st.geo && !st.busy) showList(res); }) : null;
+    function showList(res) {
+      list.innerHTML = "";
+      if (!res) return setStatus("");
+      if (res.error) return setStatus(GEO_MSG[res.error === "offline" ? "offline" : "error"](), "warn");
+      if (!res.list.length) return setStatus(L("Пока ничего не нашлось — допишите улицу и номер дома.", "Әзірге ештеңе табылмады — көше мен үй нөмірін толық жазыңыз."));
+      setStatus(L("Нажмите на свой адрес:", "Мекенжайыңызды басыңыз:"));
+      res.list.forEach((r) => list.append(sugRow(r, () => pick(r))));
+    }
+    function pick(r) {
+      const p = GEOX ? GEOX.parse(o.input.value, (cityOf(cityId()) || {}).rx) : null;
+      if (p && p.flat && o.flat && !o.flat.value) o.flat.value = p.flat;
+      st.geo = { lat: r.lat, lng: r.lng, label: r.label, district: r.district || "", city: cityId() };
+      o.input.value = r.label; st.text = r.label; st.skip = false;
+      list.innerHTML = ""; setStatus("");
+      confirmed(st.geo);
+    }
+    function confirmed(g) {
+      found.hidden = false; found.className = "geo-found ok";
+      found.innerHTML = `<div class="geo-mini"></div><p class="geo-ok"><span class="geo-tick" aria-hidden="true">✓</span><span>${esc(L("Точка на карте:", "Картадағы нүкте:"))} <b>${esc(g.label)}</b>${g.district ? `<small>${esc(g.district)}</small>` : ""}</span></p>`;
+      miniMap(found.querySelector(".geo-mini"), g);
+    }
+    function keep() { st.skip = true; st.geo = null; st.text = o.input.value.trim(); found.hidden = true; setStatus(""); if (o.proceed) o.proceed(); }
+    function panel(html, buttons) {
+      found.hidden = false; found.className = "geo-found ask";
+      found.innerHTML = html;
+      const row = el("div", "geo-btns");
+      buttons.forEach((b) => row.append(b));
+      found.append(row);
+    }
+    function ask(res) {
+      const r = res.list[0];
+      panel(`<p class="geo-q">${esc(L("Мы нашли:", "Таптық:"))} <b>${esc(r.label)}</b>${r.district ? `<small>${esc(r.district)}</small>` : ""}${r.approx ? `<small class="geo-approx">${esc(L("дом на карте не отмечен — точка на улице", "үй картада белгіленбеген — нүкте көшеде"))}</small>` : ""}<span class="geo-q-end">${esc(L("Верно?", "Дұрыс па?"))}</span></p><div class="geo-mini"></div>`,
+        [btn("btn-main geo-yes", L("Да, верно", "Иә, дұрыс"), () => { pick(r); if (o.proceed) o.proceed(); }),
+         btn("btn-sub", L("Оставить как написано", "Жазғанымдай қалдыру"), keep)]);
+      miniMap(found.querySelector(".geo-mini"), r);
+      if (res.list.length > 1) {
+        found.append(el("p", "geo-more", esc(L("Или выберите другой:", "Немесе басқасын таңдаңыз:"))));
+        res.list.slice(1).forEach((x) => found.append(sugRow(x, () => { pick(x); if (o.proceed) o.proceed(); })));
+      }
+      speak(L("Нашла адрес. Проверьте на карте.", "Мекенжайды таптым. Картадан тексеріңіз."));
+    }
+    o.input.addEventListener("input", () => {
+      const v = o.input.value.trim();
+      if (st.geo && v !== st.text) st.geo = null;
+      st.skip = false;
+      if (!st.geo) {
+        found.hidden = true;
+        setStatus(v.replace(/[^0-9a-zа-яёәғқңөұүһі]/gi, "").length >= 3 && sugg ? L("Ищу на карте…", "Картадан іздеп жатырмын…") : "");
+        if (sugg) sugg(v, cityId());
+      }
+    });
+    const api = {
+      load(g, text, approx) {
+        st.geo = g && g.lat ? Object.assign({}, g) : null; st.text = text || ""; st.skip = !st.geo && !!text && !!approx;
+        list.innerHTML = ""; setStatus(""); found.hidden = true;
+        if (st.geo) confirmed(st.geo);
+      },
+      value() { const v = o.input.value.trim(); return st.geo && st.geo.city === cityId() && v && v === st.text ? { lat: st.geo.lat, lng: st.geo.lng, label: st.geo.label, city: st.geo.city } : null; },
+      skipped() { return st.skip && o.input.value.trim() === st.text; },
+      // true: go on; false: we are searching or asking «верно?»
+      ready() {
+        const v = o.input.value.trim();
+        if (!v || api.skipped() || api.value() || !GEOX) return true;
+        if (st.busy) return false;
+        st.busy = true; list.innerHTML = ""; found.hidden = true;
+        setStatus(L("Ищу адрес на карте…", "Мекенжайды картадан іздеп жатырмын…"));
+        GEOX.search(v, cityId()).then((res) => {
+          st.busy = false; setStatus("");
+          if (o.input.value.trim() !== v) return;
+          if (res.error && !res.list.length) {
+            panel(`<p class="geo-q warn">${esc(GEO_MSG[res.error === "offline" ? "offline" : "error"]())}</p>`, [btn("btn-main", L("Продолжить", "Жалғастыру"), keep)]);
+          } else if (!res.list.length) {
+            panel(`<p class="geo-q warn">${esc(GEO_MSG.none(cityName(cityId())))}</p>`, [btn("btn-sub", L("Оставить как написано", "Жазғанымдай қалдыру"), keep)]);
+            speak(L("Не нашла такой адрес. Проверьте улицу и номер дома.", "Мұндай мекенжай табылмады. Көше мен үй нөмірін тексеріңіз."));
+          } else ask(res);
+          found.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
+        });
+        return false;
+      }
+    };
+    return api;
+  }
+
+  /* ==========================================================
+     Profile screen: 5-step registration on first run (who fills it in → name → city → address → contacts),
+     one form for later edits
+     ========================================================== */
+  const PF_STEPS = 5;
   let pfStep = 0, pfDraft = null;
   const onboarding = () => !state.settings.profile;
   const pfForm = $("#pfForm");
   const fld = (n) => pfForm.elements[n];
+  const pfRole = () => (pfDraft && pfDraft.role) || "self";
+  const homeAddr = addrField({ input: fld("home"), box: $("#pfHomeGeo"), flat: fld("flat"), city: () => $("#pfCity").value, proceed: () => pfForm.requestSubmit() });
+  const c0Addr = addrField({ input: fld("c0addr"), box: $("#pfC0Geo"), city: () => $("#pfCity").value, proceed: () => pfForm.requestSubmit() });
   function fillRelSelects() {
     $$("[data-rel-select]", pfForm).forEach((sel) => {
       const v = sel.value;
-      sel.innerHTML = Object.keys(REL).map((k) => `<option value="${k}">${esc(L(REL[k].ru.nom, REL[k].kk.nom))}</option>`).join("");
+      const keys = Object.keys(REL).filter((k) => !(k === "centre" && sel.dataset.relSelect === "guardian"));
+      sel.innerHTML = keys.map((k) => `<option value="${k}">${esc(L(REL[k].ru.nom, REL[k].kk.nom))}</option>`).join("");
       if (v) sel.value = v;
     });
     const cs = $("#pfCity"), cv = cs.value;
@@ -1482,38 +1921,74 @@
     if (cv) cs.value = cv;
   }
   function pfLoad() {
-    const pf = state.settings.profile || Object.assign({}, DEMO_PROFILE, { name: "", home: "", flat: "", demo: false, lang: state.lang, city: state.settings.city,
+    const pf = state.settings.profile || Object.assign({}, DEMO_PROFILE, { role: null, name: "", home: "", flat: "", demo: false, lang: state.lang, city: state.settings.city,
       contacts: [{ name: "", rel: "daughter", phone: "", addr: "" }, { name: "", rel: "son", phone: "" }] });
+    const role = pf.role || (state.settings.profile ? "self" : null);
     fillRelSelects();
     fld("name").value = pf.name || "";
     $("#pfCity").value = pf.city || state.settings.city;
     fld("home").value = pf.home || ""; fld("flat").value = pf.flat || "";
+    homeAddr.load(pf.homeGeo, pf.home, pf.homeApprox);
+    const cs = pf.contacts.slice();
+    const me = cs[0] && cs[0].me ? cs[0] : null;
+    ["gName", "gPhone", "sOrg", "sName", "sPhone", "c0name", "c0phone", "c0addr", "c1name", "c1phone"].forEach((n) => { fld(n).value = ""; });
+    fld("gRel").value = "daughter";
+    if (me && role === "guardian") { fld("gName").value = me.name || ""; fld("gRel").value = me.rel || "other"; fld("gPhone").value = me.phone || ""; }
+    if (me && role === "staff") { fld("sOrg").value = me.org || ""; fld("sName").value = me.name || ""; fld("sPhone").value = me.phone || ""; }
     [0, 1].forEach((i) => {
-      const c = pf.contacts[i] || { name: "", rel: i ? "son" : "daughter", phone: "" };
+      const c = (me && i === 0 ? null : cs[i]) || { name: "", rel: i ? "son" : "daughter", phone: "" };
       fld(`c${i}name`).value = c.name || ""; fld(`c${i}rel`).value = c.rel || "other"; fld(`c${i}phone`).value = c.phone || "";
-      if (fld(`c${i}addr`)) fld(`c${i}addr`).value = c.addr || "";
     });
-    pfDraft = { lang: pf.lang || state.lang };
+    fld("c0addr").value = (cs[0] && cs[0].addr) || "";
+    c0Addr.load(cs[0] && cs[0].geo, fld("c0addr").value, false);
+    pfDraft = { lang: pf.lang || state.lang, role };
   }
   function pfRead() {
     const v = (n) => (fld(n) && fld(n).value || "").trim().replace(/\s+/g, " ");
+    const role = pfRole();
+    const contacts = [0, 1].map((i) => ({ name: v(`c${i}name`), rel: fld(`c${i}rel`).value, phone: v(`c${i}phone`), addr: v(`c${i}addr`) }));
+    // guardian / care-centre employee: they are the first to call — typed once, on the first step
+    if (role === "guardian") contacts[0] = { name: v("gName"), rel: fld("gRel").value, phone: v("gPhone"), addr: v("c0addr"), me: true };
+    if (role === "staff") contacts[0] = { name: v("sName"), rel: "centre", org: v("sOrg"), phone: v("sPhone"), addr: v("c0addr"), me: true };
+    const g0 = c0Addr.value();
+    if (g0 && contacts[0].addr) contacts[0].geo = g0;
+    const homeGeo = homeAddr.value();
     return {
-      name: v("name"), lang: pfDraft.lang, city: $("#pfCity").value, home: v("home"), flat: v("flat"),
-      contacts: [0, 1].map((i) => ({ name: v(`c${i}name`), rel: fld(`c${i}rel`).value, phone: v(`c${i}phone`), addr: v(`c${i}addr`) })).filter((c) => c.name)
+      role, name: v("name"), lang: pfDraft.lang, city: $("#pfCity").value, home: v("home"), flat: v("flat"),
+      homeGeo, homeApprox: !homeGeo && !!v("home"),
+      contacts: contacts.filter((c) => c.name)
     };
   }
+  const digits = (n) => /\d{6,}/.test((fld(n).value || "").replace(/\D/g, ""));
   function pfCheck(step) {
-    const d = pfRead();
+    const d = pfRead(), role = pfRole(), all = step == null;
     const err = (m, n) => { const e = $("#pfError"); e.textContent = m; e.hidden = false; if (n && fld(n)) fld(n).focus(); return false; };
     $("#pfError").hidden = true;
-    if ((step == null || step === 0) && !d.name) return err(L("Напишите или скажите, как к вам обращаться.", "Сізге қалай жүгінетінімізді жазыңыз не айтыңыз."), "name");
-    if ((step == null || step === 2) && !d.home) return err(L("Укажите улицу и дом — сюда приедут такси и курьер.", "Көше мен үйді көрсетіңіз — такси мен курьер осында келеді."), "home");
-    if (step == null || step === 3) {
-      if (!v0()) return err(L("Укажите хотя бы одного близкого человека.", "Кем дегенде бір жақыныңызды көрсетіңіз."), "c0name");
-      if (!/\d{6,}/.test(fld("c0phone").value.replace(/\D/g, ""))) return err(L("Проверьте телефон близкого — нужно не меньше 6 цифр.", "Жақыныңыздың телефонын тексеріңіз — кемінде 6 сан."), "c0phone");
+    if (all || step === 0) {
+      if (!pfDraft.role) return err(L("Выберите, кто заполняет данные.", "Деректерді кім толтыратынын таңдаңыз."));
+      if (role === "guardian") {
+        if (!fld("gName").value.trim()) return err(L("Напишите ваше имя — вам будем звонить первым.", "Атыңызды жазыңыз — алдымен сізге қоңырау шаламыз."), "gName");
+        if (!digits("gPhone")) return err(L("Проверьте ваш телефон — нужно не меньше 6 цифр.", "Телефоныңызды тексеріңіз — кемінде 6 сан."), "gPhone");
+      }
+      if (role === "staff") {
+        if (!fld("sOrg").value.trim()) return err(L("Напишите название центра ухода.", "Күтім орталығының атауын жазыңыз."), "sOrg");
+        if (!fld("sName").value.trim()) return err(L("Напишите ваше имя.", "Атыңызды жазыңыз."), "sName");
+        if (!digits("sPhone")) return err(L("Проверьте рабочий телефон — нужно не меньше 6 цифр.", "Жұмыс телефонын тексеріңіз — кемінде 6 сан."), "sPhone");
+      }
+    }
+    if ((all || step === 1) && !d.name) return err(role === "self" ? L("Напишите или скажите, как к вам обращаться.", "Сізге қалай жүгінетінімізді жазыңыз не айтыңыз.") : L("Напишите, как зовут подопечного.", "Қамқордағы адамның атын жазыңыз."), "name");
+    if (all || step === 3) {
+      if (!d.home) return err(L("Укажите улицу и дом — сюда приедут такси и курьер.", "Көше мен үйді көрсетіңіз — такси мен курьер осында келеді."), "home");
+      if (!homeAddr.ready()) return false;
+    }
+    if (all || step === 4) {
+      if (role === "self") {
+        if (!fld("c0name").value.trim()) return err(L("Укажите хотя бы одного близкого человека.", "Кем дегенде бір жақыныңызды көрсетіңіз."), "c0name");
+        if (!digits("c0phone")) return err(L("Проверьте телефон близкого — нужно не меньше 6 цифр.", "Жақыныңыздың телефонын тексеріңіз — кемінде 6 сан."), "c0phone");
+      }
+      if (!c0Addr.ready()) return false;
     }
     return true;
-    function v0() { return fld("c0name").value.trim(); }
   }
   function pfSave(data) {
     const st = state.settings;
@@ -1523,15 +1998,46 @@
     if (data.lang && data.lang !== state.lang) setLang(data.lang);
     if (cityChanged) setCity(data.city, { silent: true }); else cityTexts(st.city);
     save(); applyLang();
+    rebuildRoutes();
+  }
+  // texts of the wizard depend on who fills it in
+  function pfTexts(role, ob) {
+    const self = role === "self";
+    const T = {
+      pfS1: self ? L("О вас", "Өзіңіз туралы") : L("Подопечный", "Қамқордағы адам"),
+      pfNameLbl: self ? L("Как к вам обращаться?", "Сізге қалай жүгінейік?") : L("Как зовут подопечного?", "Қамқордағы адамның аты кім?"),
+      pfNameHint: self ? L("Например: Айгуль апа или Серик ага", "Мысалы: Әйгүл апа не Серік аға") : L("Так помощник будет к нему обращаться, например: Айгуль апа", "Көмекші оған осылай жүгінеді, мысалы: Әйгүл апа"),
+      pfS2: self ? L("Ваш город", "Сіздің қалаңыз") : L("Город подопечного", "Қамқордағы адамның қаласы"),
+      pfCityLbl: self ? L("Где вы живёте?", "Қай қалада тұрасыз?") : L("Где живёт подопечный?", "Ол қай қалада тұрады?"),
+      pfS3: self ? L("Ваш адрес", "Сіздің мекенжайыңыз") : L("Адрес подопечного", "Қамқордағы адамның мекенжайы"),
+      pfC1T: self ? L("Первый, кому звонить", "Бірінші қоңырау шалатын адам") : role === "staff" ? L("Первым звоним в центр ухода", "Алдымен күтім орталығына қоңырау шаламыз") : L("Первым звоним вам", "Алдымен сізге қоңырау шаламыз"),
+      pfCaddrLbl: self ? L("Адрес (чтобы ездить в гости) — необязательно", "Мекенжайы (қонаққа бару үшін) — міндетті емес")
+        : role === "staff" ? L("Адрес центра — необязательно", "Орталықтың мекенжайы — міндетті емес") : L("Ваш адрес (чтобы ездить в гости) — необязательно", "Сіздің мекенжайыңыз (қонаққа бару үшін) — міндетті емес")
+    };
+    Object.keys(T).forEach((id) => setText($("#" + id), T[id]));
+    const v = (n) => fld(n).value.trim();
+    const relNom = (k) => L((REL[k] || REL.other).ru.nom, (REL[k] || REL.other).kk.nom);
+    const me = $("#pfMe");
+    me.hidden = self;
+    if (role === "guardian") me.textContent = [v("gName"), relNom(fld("gRel").value), v("gPhone")].filter(Boolean).join(" · ");
+    if (role === "staff") me.textContent = [v("sOrg") ? "«" + v("sOrg") + "»" : "", v("sName"), v("sPhone")].filter(Boolean).join(" · ");
+    $$(".pf-c0own", pfForm).forEach((x) => { x.hidden = !self; });
+    $$("[data-pf-helper]", pfForm).forEach((x) => { x.hidden = x.dataset.pfHelper !== (pfDraft && pfDraft.role); });
+    $$("[data-pf-role]", pfForm).forEach((b) => b.setAttribute("aria-checked", String(b.dataset.pfRole === (pfDraft && pfDraft.role))));
+    $("#pfTitle").textContent = ob ? (self || !pfDraft.role ? L("Давайте познакомимся", "Танысайық") : L("Настроим помощник для подопечного", "Қамқордағы адамға көмекшіні баптайық")) : L("Ваши данные", "Сіздің деректеріңіз");
+    $("#pfLead").textContent = ob
+      ? (self || !pfDraft.role ? L("Пять коротких шагов — и помощник будет знать ваш адрес и близких.", "Бес қысқа қадам — көмекші мекенжайыңыз бен жақындарыңызды біледі.")
+        : L("Пять коротких шагов — и помощник будет знать адрес подопечного и кому звонить.", "Бес қысқа қадам — көмекші қамқордағы адамның мекенжайын және кімге қоңырау шалу керегін біледі."))
+      : L("Измените что нужно и нажмите «Сохранить».", "Керегін өзгертіп, «Сақтау» басыңыз.");
   }
   function renderProfile() {
     const ob = onboarding();
     if (!pfDraft) pfLoad();
     fillRelSelects();
-    $("#pfKicker").textContent = ob ? L(`Регистрация · шаг ${pfStep + 1} из ${PF_STEPS}`, `Тіркелу · ${pfStep + 1}/${PF_STEPS} қадам`) : L("Мои данные", "Менің деректерім");
-    $("#pfTitle").textContent = ob ? L("Давайте познакомимся", "Танысайық") : L("Ваши данные", "Сіздің деректеріңіз");
-    $("#pfLead").textContent = ob ? L("Четыре коротких шага — и помощник будет знать ваш адрес и близких.", "Төрт қысқа қадам — көмекші мекенжайыңыз бен жақындарыңызды біледі.")
-      : L("Измените что нужно и нажмите «Сохранить».", "Керегін өзгертіп, «Сақтау» басыңыз.");
+    const role = pfRole();
+    $("#pfKicker").textContent = ob ? L(`Регистрация · шаг ${pfStep + 1} из ${PF_STEPS}`, `Тіркелу · ${pfStep + 1}/${PF_STEPS} қадам`)
+      : L("Мои данные · ", "Менің деректерім · ") + L(ROLES[role].ru, ROLES[role].kk);
+    pfTexts(role, ob);
     $$("#pfDots i").forEach((d, i) => d.classList.toggle("on", i <= pfStep));
     $("#pfDots").hidden = !ob;
     $$(".pf-step", pfForm).forEach((f) => { f.hidden = ob && +f.dataset.pfStep !== pfStep; });
@@ -1545,17 +2051,38 @@
     pfDraft.lang = b.dataset.pfLang;
     if (onboarding()) setLang(pfDraft.lang); else renderProfile();
   }));
+  $$("[data-pf-role]").forEach((b) => b.addEventListener("click", () => {
+    const prev = pfDraft.role;
+    pfDraft.role = b.dataset.pfRole;
+    // a guardian who becomes «self» keeps their data as the first contact
+    if (pfDraft.role === "self" && prev === "guardian" && !fld("c0name").value.trim()) {
+      fld("c0name").value = fld("gName").value; fld("c0rel").value = fld("gRel").value; fld("c0phone").value = fld("gPhone").value;
+    }
+    $("#pfError").hidden = true;
+    renderProfile();
+    const f = $(`[data-pf-helper="${pfDraft.role}"] input`);
+    if (f && !f.value) f.focus();
+  }));
+  pfForm.addEventListener("input", (e) => { if (/^(g|s)[A-Z]/.test(e.target.name || "")) pfTexts(pfRole(), onboarding()); });
+  pfForm.addEventListener("change", (e) => { if (e.target.name === "gRel") pfTexts(pfRole(), onboarding()); });
   $("#pfPrev").addEventListener("click", () => { pfStep = Math.max(0, pfStep - 1); $("#pfError").hidden = true; renderProfile(); });
   pfForm.addEventListener("submit", (e) => {
     e.preventDefault();
     if (onboarding()) {
       if (!pfCheck(pfStep)) return;
-      if (pfStep < PF_STEPS - 1) { pfStep++; renderProfile(); window.scrollTo(0, 0); const f = $(`[data-pf-step="${pfStep}"] input, [data-pf-step="${pfStep}"] select`); if (f) f.focus(); return; }
-      pfSave(pfRead());
-      pfDraft = null;
-      go("home");
-      // spoken without the name (pre-recorded clip), shown with it
-      setTimeout(() => { reply(L("Готово! Теперь просто скажите, что нужно.", "Дайын! Енді не керегін айтыңыз.")); toast(L(`Добро пожаловать, ${userName()}!`, `Қош келдіңіз, ${userName()}!`)); }, 400);
+      if (pfStep < PF_STEPS - 1) { pfStep++; renderProfile(); window.scrollTo(0, 0); const f = $(`[data-pf-step="${pfStep}"] input:not([type=hidden]), [data-pf-step="${pfStep}"] select`); if (f && f.offsetParent) f.focus(); return; }
+      const data = pfRead();
+      pfSave(data);
+      pfDraft = null; pfStep = 0;
+      if (data.role === "self") {
+        go("home");
+        // spoken without the name (pre-recorded clip), shown with it
+        setTimeout(() => { reply(L("Готово! Теперь просто скажите, что нужно.", "Дайын! Енді не керегін айтыңыз.")); toast(L(`Добро пожаловать, ${userName()}!`, `Қош келдіңіз, ${userName()}!`)); }, 400);
+      } else {
+        // guardian / care-centre employee: straight to the settings they manage
+        go("family");
+        setTimeout(() => { speak(L("Готово! Настройки подопечного — в режиме родственника.", "Дайын! Қамқордағы адамның баптаулары — туыс режимінде.")); toast(L(`Готово! Вы управляете помощником: ${userName()}`, `Дайын! Сіз басқаратын көмекші: ${userName()}`), 4500); }, 400);
+      }
       return;
     }
     if (!pfCheck()) return;
@@ -1567,7 +2094,7 @@
   });
   $("#pfDemo").addEventListener("click", () => {
     pfSave(Object.assign({}, DEMO_PROFILE, { lang: state.lang, city: state.settings.city, contacts: DEMO_PROFILE.contacts.map((c) => Object.assign({}, c)) }));
-    pfDraft = null; go("home");
+    pfDraft = null; pfStep = 0; go("home");
   });
   // dictation into a field: «Сказать голосом» next to names and addresses
   $$("[data-dictate]").forEach((b) => b.addEventListener("click", () => {
@@ -1584,7 +2111,7 @@
           if (!got && lang === "kk-KZ" && (e.error === "language-not-supported" || e.error === "service-not-allowed")) { kkRecOff = true; store.set("kkRecOff", true); b.classList.remove("is-listening"); run("ru-RU"); }
           else if (e.error === "not-allowed") toast(L("Нет доступа к микрофону.", "Микрофонға рұқсат жоқ."));
         };
-        r.onend = () => b.classList.remove("is-listening");
+        r.onend = () => { b.classList.remove("is-listening"); if (got) input.dispatchEvent(new Event("input", { bubbles: true })); };
         stopSpeech();
         r.start();
       } catch (err) { b.classList.remove("is-listening"); }
