@@ -19,9 +19,10 @@ const CMDS = {
 (async () => {
   const browser = await chromium.launch();
   const seen = new Map();
-  for (const lang of ["ru", "kk"]) {
+  for (const lang of (process.env.LANGS || "ru,kk").split(",")) {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const p = await ctx.newPage();
+    p.on("crash", () => console.error("page crashed"));
     await p.route(/cdnjs|cartocdn|fonts\.g/, (r) => r.abort());
     await p.clock.install();
     await p.addInitScript((lng) => {
