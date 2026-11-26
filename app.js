@@ -31,7 +31,8 @@
     limit: 20000,
     spent: 12400,
     askOverLimit: true,
-    seeOrders: false
+    seeOrders: false,
+    city: "almaty"
   };
   const saved = store.get("settings", {});
   const state = {
@@ -55,7 +56,9 @@
      Data
      ========================================================== */
   const DEST = {
-    // Real Almaty addresses; map coordinates and street routes live in routes.js
+    // Real Almaty addresses (default city); other cities replace ru/kk/from/stop from cities.js.
+    // Prices, ETA and bus numbers stay the same in every city (they are spoken by recorded clips).
+    // Map coordinates and street routes live in routes.js (Almaty) and routes-<city>.js
     home:   { rx: /(дом|домой|үй)/i, ru: "Дом — ул. Римского-Корсакова, 21, кв. 34", kk: "Үй — Римский-Корсаков к-сі, 21, 34-пәтер", chip: { ru: "Домой", kk: "Үйге" }, price: 1400, eta: 4, bus: 37, from: { ru: "«Аманжолова»", kk: "«Аманжолов»" }, stop: { ru: "«Габдулина»", kk: "«Ғабдуллин»" } },
     clinic: { rx: /(поликлиник|больниц|врач|клиник|емхана|аурухана|дәрігер)/i, ru: "Поликлиника №4 — ул. Торайгырова, 16", kk: "№4 емхана — Торайғыров к-сі, 16", chip: { ru: "В поликлинику", kk: "Емханаға" }, price: 1100, eta: 5, bus: 12, from: { ru: "«Габдулина»", kk: "«Ғабдуллин»" }, stop: { ru: "«Поликлиника №4»", kk: "«№4 емхана»" } },
     kid:    { rx: /(доч|мадин|қызым|қызыма|қызға)/i, ru: "Мадина (дочь) — мкр. Самал-2, 25", kk: "Мадина (қызы) — Самал-2, 25", chip: { ru: "К дочери", kk: "Қызыма" }, price: 1900, eta: 6, bus: 92, from: { ru: "«Аксакова»", kk: "«Ақсақов»" }, stop: { ru: "«Самал»", kk: "«Самал»" } },
@@ -63,6 +66,25 @@
   };
   const ORIGIN = { ru: "ул. Кабанбай батыра, 12", kk: "Қабанбай батыр к-сі, 12" };
   const HOME_SHORT = { ru: "Дом — ул. Римского-Корсакова, 21", kk: "Үй — Римский-Корсаков к-сі, 21" };
+
+  /* Cities of Kazakhstan (cities.js): the same destinations with each city's own addresses and stops */
+  const KZ = window.KZ && window.KZ.cities ? window.KZ : null;
+  const CITY_IDS = KZ ? KZ.order : ["almaty"];
+  if (!CITY_IDS.includes(state.settings.city)) state.settings.city = "almaty";
+  const cityOf = (id) => (KZ && KZ.cities[id || state.settings.city]) || null;
+  const cityName = (id) => { const c = cityOf(id); return c ? L(c.name.ru, c.name.kk) : "Алматы"; };
+  function cityTexts(id) {
+    const c = cityOf(id);
+    if (!c) return;
+    Object.keys(DEST).forEach((k) => { const d = c.dest[k]; if (d) Object.assign(DEST[k], { ru: d.ru, kk: d.kk, from: d.from, stop: d.stop }); });
+    Object.assign(ORIGIN, c.origin);
+    Object.assign(HOME_SHORT, c.homeShort);
+  }
+  cityTexts(state.settings.city);
+  const CITY_RX = CITY_IDS.filter((id) => cityOf(id)).map((id) => [id, new RegExp(cityOf(id).rx, "i")]);
+  const findCity = (s) => { const hit = CITY_RX.find(([, rx]) => rx.test(s)); return hit ? hit[0] : null; };
+  // «я в Астане», «город Шымкент», «переключи на Караганду», «Астанадамын», «Шымкентте тұрамын»
+  const CITY_INTENT = /(^|\s)(я|мы)\s+(сейчас\s+|уже\s+|живу\s+|теперь\s+)?(в|во)\s|город|переключ|смени|поменяй|выбери|нахожусь|живу|приехал|(да|де|та|те)(мын|мін|мыз|міз)(?![а-яёәғқңөұүһі])|қала|ауыстыр|тұрамын|келдім/i;
 
   const LET = "a-zа-яёәғқңөұүһі";
   const NL = "[^" + LET + "]";
@@ -411,6 +433,15 @@
       return openHelp(Math.max(0, c), true);
     }
 
+    // 1b) City: «я в Астане» / «Астанадамын» switches the city; a request in the same phrase goes on
+    const cityHit = findCity(s);
+    if (cityHit && (CITY_INTENT.test(s) || s.replace(/[^a-zа-яёәғқңөұүһі]/gi, "").length <= 18)) {
+      const more = RX.taxi.test(s) || RX.route.test(s) || RX.food.test(s) || !!findDest(s) || !!findKind(s);
+      setCity(cityHit, { silent: more });
+      if (!more) return;
+      toast(L(`Город: ${cityName()}`, `Қала: ${cityName()}`), 2200);
+    }
+
     // 2) Yes / no on the current screen
     if (cur !== "home" && RX.yes.test(s)) { const b = $(`[data-actions="${cur}"] [data-confirm]`); if (b) return b.click(); }
     if (cur !== "home" && RX.no.test(s)) { reply(L("Хорошо, отменила.", "Жарайды, тоқтаттым.")); return go("home"); }
@@ -572,12 +603,23 @@
   }
 
   /* ==========================================================
-     «Живая карта Алматы»: real streets (routes.js) on a Leaflet map (map.js).
+     «Живая карта»: real streets of the chosen city (routes.js for Almaty,
+     routes-<city>.js loaded on demand) on a Leaflet map (map.js).
      The ride / bus simulation runs without the map too: if Leaflet or the
      tiles cannot load, the screens keep the decorative SVG and the texts still update.
      ========================================================== */
-  const ROUTES = window.ROUTES || null;
+  const cityRoutes = () => (KZ ? KZ.routes[state.settings.city] || null : window.ROUTES || null);
+  let ROUTES = cityRoutes();
   const LM = window.LiveMap || null;
+  // the current city's routes: already embedded, or fetched once (routes-<city>.js)
+  function ensureRoutes() {
+    const id = state.settings.city;
+    if (ROUTES || !KZ) return Promise.resolve(ROUTES);
+    return KZ.loadRoutes(id).then((r) => {
+      if (r && state.settings.city === id && !ROUTES) { ROUTES = r; render(); }
+      return ROUTES;
+    });
+  }
   const DEMO = 8;                       // demo clock: 1 real second ≈ 8 simulated seconds
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const clock = (sec) => { const s = Math.max(0, Math.ceil(sec)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
@@ -587,13 +629,13 @@
   const fromPoint = (k) => (k === "home" ? ROUTES.points.origin : ROUTES.points.home);
   const plural = (n, f) => { const a = n % 10, b = n % 100; return f[a === 1 && b !== 11 ? 0 : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 1 : 2]; };
   const geoCache = {};
-  const geo = (key, pts) => geoCache[key] || (geoCache[key] = LM.measure(pts));
-  const hasRoutes = !!(ROUTES && LM);
+  const geo = (key, pts) => { const k = state.settings.city + key; return geoCache[k] || (geoCache[k] = LM.measure(pts)); };
+  const hasRoutes = () => !!(ROUTES && LM);
 
   /* ---- Taxi ride: wait → pickup → arrived → trip → finished ---- */
   function ridePlan(dest) {
     const d = DEST[dest];
-    const len = hasRoutes ? ROUTES.taxi[dest].len : d.eta * 900;
+    const len = hasRoutes() ? ROUTES.taxi[dest].len : d.eta * 900;
     const pickupSim = d.eta * 60, tripSim = Math.max(5, Math.round(len / 400)) * 60;   // ~24 km/h in town
     return { pickupSim, tripSim, pickupMs: clamp(pickupSim / DEMO, 18, 40) * 1000, waitMs: 6000, tripMs: clamp(tripSim / DEMO, 24, 45) * 1000 };
   }
@@ -699,12 +741,19 @@
     const el = $(MAP_EL[screen]), top = el.closest(".top");
     try {
       const shade = top.querySelector(".map-shade");
+      const c = cityOf();
       maps[screen] = LM.create(el, {
+        bounds: c ? c.bounds : null, center: c ? c.center : null,
         onReady: () => { if (mapBroken) return; top.classList.add("has-map"); setTimeout(() => refreshMap(screen), 700); },
         onFail: dropMaps
       });
       // the shade lives inside the map: over tiles and markers, under the zoom buttons
       if (shade) el.appendChild(shade);
+      // the panel grows once the map appears (the quote moves down): fit again at the final size
+      if (window.ResizeObserver) {
+        let rt;
+        new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => refreshMap(screen), 150); }).observe(el);
+      }
     } catch (e) { dropMaps(); return; }
     mapLabels(maps[screen]);
     mapInsets(maps[screen]);
@@ -716,10 +765,10 @@
     requestAnimationFrame(() => { v.invalidate(); mapInsets(v); v.refit(false); });
   }
   function mapsOnShow(screen) {
-    if (!MAP_EL[screen] || mapBroken || !hasRoutes) return;
-    LM.load().then((ok) => {
+    if (!MAP_EL[screen] || mapBroken || !LM) return;
+    Promise.all([LM.load(), ensureRoutes()]).then(([ok]) => {
       if (!ok) { dropMaps(); return; }
-      if (state.screen !== screen) return;
+      if (state.screen !== screen || !ROUTES) return;
       if (!maps[screen]) createMap(screen);
       refreshMap(screen);
     });
@@ -730,18 +779,19 @@
   /* Taxi map: route (casing + marching dots), pickup path, pins, car */
   function taxiFit(animate) {
     const v = maps.taxi;
-    if (!v) return;
+    if (!v || !ROUTES) return;
     const s = state.taxi, T = ROUTES.taxi[s.dest];
-    const pts = (s.phase === "trip" || s.phase === "finished") ? T.route : T.route.concat(T.pickup);
+    const pts =(s.phase === "trip" || s.phase === "finished") ? T.route : T.route.concat(T.pickup);
     v.invalidate(); mapInsets(v);
     v.fit(pts.concat([fromPoint(s.dest), ROUTES.points[s.dest]]), animate);
   }
   function syncTaxiMap() {
     const v = maps.taxi;
-    if (!v) return;
-    const s = state.taxi, sig = s.dest + "|" + state.lang;
+    if (!v || !ROUTES) return;
+    const s = state.taxi, sig = state.settings.city + "|" + s.dest + "|" + state.lang;
     if (sig === taxiMap.sig) return;
-    const prevDest = taxiMap.sig ? taxiMap.sig.split("|")[0] : null;
+    const prev = taxiMap.sig ? taxiMap.sig.split("|") : null;
+    const prevDest = prev && prev[0] === state.settings.city ? prev[1] : prev ? "" : null;   // "" = other city: fly
     taxiMap.sig = sig; taxiMap.key = "";
     if (taxiMap.group) taxiMap.group.remove();
     const g = taxiMap.group = v.group(), T = ROUTES.taxi[s.dest];
@@ -753,10 +803,10 @@
     mapLabels(v);
     moveTaxi(Date.now());
     taxiLive(Date.now());
-    if (prevDest !== s.dest) taxiFit(!!prevDest);
+    if (prevDest !== s.dest) taxiFit(prevDest != null);
   }
   function moveTaxi(now) {
-    if (!maps.taxi || !taxiMap.car) return;
+    if (!maps.taxi || !taxiMap.car || !ROUTES) return;
     const s = state.taxi, T = ROUTES.taxi[s.dest];
     const pick = geo("p" + s.dest, T.pickup), route = geo("r" + s.dest, T.route);
     const r = ridePhase(now);
@@ -784,7 +834,7 @@
   }
   function routeFit(animate) {
     const v = maps.route;
-    if (!v) return;
+    if (!v || !ROUTES) return;
     const s = state.route, B = ROUTES.bus[s.dest], segs = routeSegments(s.dest);
     v.invalidate(); mapInsets(v);
     if (s.focus == null) v.fit(B.walk1.concat(B.bus, B.walk2, B.approach.slice(0, 1)), animate);
@@ -801,10 +851,11 @@
   }
   function syncRouteMap() {
     const v = maps.route;
-    if (!v) return;
-    const s = state.route, sig = s.dest + "|" + state.lang;
+    if (!v || !ROUTES) return;
+    const s = state.route, sig = state.settings.city + "|" + s.dest + "|" + state.lang;
     if (sig === routeMap.sig) return;
-    const prevDest = routeMap.sig ? routeMap.sig.split("|")[0] : null;
+    const prev = routeMap.sig ? routeMap.sig.split("|") : null;
+    const prevDest = prev && prev[0] === state.settings.city ? prev[1] : prev ? "" : null;   // "" = other city: fly
     routeMap.sig = sig; routeMap.key = "";
     if (routeMap.group) routeMap.group.remove();
     const g = routeMap.group = v.group(), B = ROUTES.bus[s.dest], d = DEST[s.dest];
@@ -825,10 +876,10 @@
     highlightRoute();
     moveBus(Date.now());
     routeLive(Date.now());
-    if (prevDest !== s.dest) routeFit(!!prevDest);
+    if (prevDest !== s.dest) routeFit(prevDest != null);
   }
   function moveBus(now) {
-    if (!maps.route || !routeMap.bus) return;
+    if (!maps.route || !routeMap.bus || !ROUTES) return;
     const s = state.route, B = ROUTES.bus[s.dest];
     const ap = geo("a" + s.dest, B.approach), line = geo("b" + s.dest, B.bus);
     const r = busPhase(now);
@@ -975,7 +1026,7 @@
     $("#routeBus").textContent = "№" + d.bus;
     chipRow($("#routeDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => { s.dest = k; s.quote = null; s.focus = null; renderRoute(); });
     // minutes on foot (elderly pace ~60 m/min) and bus stops come from the real street geometry
-    const B = hasRoutes ? ROUTES.bus[s.dest] : null;
+    const B = hasRoutes() ? ROUTES.bus[s.dest] : null;
     const w1 = B ? Math.max(1, Math.round(B.walk1Len / 60)) : 3;
     const w2 = B ? Math.max(1, Math.round(B.walk2Len / 60)) : 2;
     const stops = B ? B.stopsCount : 3 + (d.bus % 5);
@@ -1120,9 +1171,116 @@
     save(); renderFamily();
   }));
 
+  /* ==========================================================
+     City: overview of Kazakhstan + list (family card, picker on taxi / route).
+     The list works without the map library; the overview is a plain SVG.
+     ========================================================== */
+  function setCity(id, opts) {
+    opts = opts || {};
+    const c = cityOf(id);
+    if (!c) return;
+    if (id !== state.settings.city) {
+      // a ride under way belongs to the old city: cancel it and give the money back
+      const tx = state.taxi;
+      if (tx.status === "done" && tx.phase !== "finished") state.settings.spent = Math.max(0, state.settings.spent - DEST[tx.dest].price);
+      if (tx.status !== "pending") Object.assign(tx, { status: "draft", ride: null, phase: "wait" });
+      tx.quote = null;
+      Object.assign(state.route, { sim: null, focus: null, quote: null });
+      state.settings.city = id; save();
+      cityTexts(id);
+      ROUTES = cityRoutes();
+      Object.keys(maps).forEach((k) => maps[k].setCity(c.bounds));
+      ensureRoutes();
+      render();
+    }
+    if (!opts.silent) reply(L(`Хорошо, город — ${c.name.ru}. Адреса и маршруты обновила.`, `Жақсы, қала — ${c.name.kk}. Мекенжайлар мен бағыттарды жаңарттым.`));
+  }
+
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs, parent) {
+    const e = document.createElementNS(SVGNS, tag);
+    Object.keys(attrs).forEach((k) => e.setAttribute(k, attrs[k]));
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  // Kazakhstan outline (Overture divisions, pre-projected in cities.js) with tappable city dots
+  function kzOverview(box, onPick) {
+    const O = KZ && KZ.outline;
+    if (!O) { box.hidden = true; return; }
+    const cur = state.settings.city;
+    box.innerHTML = "";
+    const svg = svgEl("svg", { viewBox: `0 0 ${O.w} ${O.h}`, class: "kz-svg", role: "img", "aria-label": L(`Карта Казахстана, выбран город ${cityName()}`, `Қазақстан картасы, таңдалған қала: ${cityName()}`) }, box);
+    svgEl("path", { d: O.d, class: "kz-shadow", transform: "translate(7 10)" }, svg);
+    svgEl("path", { d: O.d, class: "kz-land" }, svg);
+    const pins = svgEl("g", { class: "kz-pins" }, svg);
+    CITY_IDS.filter((id) => id !== cur).concat([cur]).forEach((id) => {
+      const c = cityOf(id);
+      if (!c) return;
+      const on = id === cur, [x, y] = c.xy, [dx, dy, anchor] = c.label;
+      const g = svgEl("g", { class: "kz-pin" + (on ? " on" : ""), transform: `translate(${x} ${y})` }, pins);
+      g.addEventListener("click", () => onPick(id));
+      svgEl("circle", { r: 44, class: "kz-hit" }, g);
+      if (on) svgEl("circle", { r: 16, class: "kz-halo" }, g);
+      svgEl("circle", { r: on ? 15 : 10, class: "kz-dot" }, g);
+      const tx = svgEl("text", { x: dx, y: dy, "text-anchor": anchor, class: "kz-name" }, g);
+      tx.textContent = L(c.name.ru, c.name.kk);
+    });
+  }
+  function cityList(box, onPick) {
+    box.innerHTML = "";
+    CITY_IDS.forEach((id) => {
+      const c = cityOf(id);
+      if (!c) return;
+      const nm = L(c.name.ru, c.name.kk);
+      const b = btn("city-btn" + (nm.length > 11 ? " long" : ""), nm, () => onPick(id));
+      b.setAttribute("aria-pressed", String(id === state.settings.city));
+      box.append(b);
+    });
+  }
+  function renderCity() {
+    const name = cityName();
+    $$("[data-city-name]").forEach((e) => setText(e, name));
+    const tm = $("#taxiMap"), rm = $("#routeMap");
+    if (tm) tm.setAttribute("aria-label", L(`Карта поездки: ${name}`, `Сапар картасы: ${name}`));
+    if (rm) rm.setAttribute("aria-label", L(`Карта маршрута автобуса: ${name}`, `Автобус бағытының картасы: ${name}`));
+    if (state.screen === "family") {
+      const pick = (id) => setCity(id);
+      kzOverview($("#famCity [data-kz]"), pick);
+      cityList($("#famCity [data-city-list]"), pick);
+      const d = DEST.home;
+      setText($("#famCityNote"), L(`${name}: ${d.ru.split(", кв.")[0]}. Такси, маршруты и остановки — по улицам этого города.`,
+        `${name}: ${d.kk.split(", 34-пәтер")[0]}. Такси, бағыттар мен аялдамалар — осы қаланың көшелерімен.`));
+    }
+    if (!$("#cityOverlay").hidden) renderCityPicker();
+  }
+
+  // compact picker on the taxi / route screens
+  let cityFocus = null;
+  function renderCityPicker() {
+    const pick = (id) => { closeCityPicker(); setCity(id); };
+    kzOverview($("#cityOverlay [data-kz]"), pick);
+    cityList($("#cityOverlay [data-city-list]"), pick);
+  }
+  function openCityPicker() {
+    cityFocus = document.activeElement;
+    $("#cityOverlay").hidden = false;
+    renderCityPicker();
+    const b = $('#cityOverlay .city-btn[aria-pressed="true"]') || $("#cityClose");
+    b.focus();
+  }
+  function closeCityPicker() {
+    $("#cityOverlay").hidden = true;
+    if (cityFocus && cityFocus.focus) cityFocus.focus();
+  }
+  $$("[data-city-open]").forEach((b) => b.addEventListener("click", openCityPicker));
+  $("#cityClose").addEventListener("click", closeCityPicker);
+  $("#cityOverlay").addEventListener("click", (e) => { if (e.target.id === "cityOverlay") closeCityPicker(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#cityOverlay").hidden) closeCityPicker(); });
+
   function render() {
     renderHome();
     ({ taxi: renderTaxi, food: renderFood, route: renderRoute, services: renderServices, family: renderFamily }[state.screen] || (() => {}))();
+    renderCity();
   }
 
   /* ==========================================================
@@ -1188,7 +1346,7 @@
   cycleHints();
   if (reduceMotion) drawRays(0); else requestAnimationFrame(rayLoop);
   // fetch the map library in the background, so the taxi / route maps open instantly
-  if (hasRoutes) setTimeout(() => LM.load(), 1200);
+  if (LM) setTimeout(() => { LM.load(); ensureRoutes(); }, 1200);
 
   /* ---------------- Micro-interactions ---------------- */
   const RIPPLE = ".tile, .help-btn, .btn-main, .btn-sub, .chip, .pill-btn, .kind, .quote, .dnav-help, .btn-light, .btn-red, .mini-btn, .step";
