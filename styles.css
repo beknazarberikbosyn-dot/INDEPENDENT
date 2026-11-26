@@ -503,7 +503,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); ou
 .map-off .live-map, .map-off .map-shade { display: none; }
 
 /* basemap tinted toward the brand's dark green, streets stay readable */
-.live-map .leaflet-tile-pane { filter: grayscale(1) brightness(2.1) contrast(1.15); opacity: .56; }
+/* OSM tiles turned into a dark, slightly green night map that fits the design; street names stay readable */
+.live-map .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) grayscale(.55) brightness(.95) contrast(.95); opacity: .82; }
 .live-map .leaflet-labels-pane { filter: grayscale(1) brightness(1.35); opacity: .95; }
 
 /* more room for the map on phones */

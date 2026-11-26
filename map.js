@@ -1,6 +1,6 @@
 /* ==========================================================
    INDEPENDENT — «Живая карта» городов Казахстана
-   Leaflet 1.9.4 (cdnjs, SRI-pinned) + CARTO basemap on OpenStreetMap data.
+   Leaflet 1.9.4 (cdnjs, SRI-pinned) + OpenStreetMap standard tiles (no API key), darkened with a CSS filter.
    Loaded lazily: if Leaflet or the tiles do not load (offline, blocked),
    the screens keep their decorative SVG and nothing breaks.
    Geometry helpers below work without Leaflet (used by the trip simulation).
@@ -13,8 +13,9 @@
     css: "sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w==",
     js: "sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg=="
   };
-  const TILES = "https://{s}.basemaps.cartocdn.com/{style}/{z}/{x}/{y}{r}.png";
-  const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> · <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a>';
+  // OpenStreetMap standard tiles: no API key needed (CARTO basemaps now require a key).
+  const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a>';
   const ALMATY = [[43.02, 76.55], [43.48, 77.3]];   // default city; others pass opts.bounds
 
   const mq = (q) => !!(window.matchMedia && window.matchMedia(q).matches);
@@ -139,8 +140,7 @@
     const lp = map.getPane("labels");
     lp.style.zIndex = 390; lp.style.pointerEvents = "none";
 
-    const base = L.tileLayer(TILES, { style: "dark_nolabels", subdomains: "abcd", maxZoom: 18, attribution: ATTR, className: "lm-base" }).addTo(map);
-    L.tileLayer(TILES, { style: "dark_only_labels", subdomains: "abcd", maxZoom: 18, pane: "labels", className: "lm-labels" }).addTo(map);
+    const base = L.tileLayer(TILES, { maxZoom: 19, attribution: ATTR, className: "lm-base", referrerPolicy: "strict-origin-when-cross-origin" }).addTo(map);
     L.control.attribution({ position: "bottomright", prefix: '<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>' }).addTo(map);
 
     let loads = 0, errors = 0, failed = false;
