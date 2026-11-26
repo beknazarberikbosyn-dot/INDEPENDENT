@@ -1,5 +1,5 @@
 /* ==========================================================
-   INDEPENDENT — «Живая карта Алматы»
+   INDEPENDENT — «Живая карта» городов Казахстана
    Leaflet 1.9.4 (cdnjs, SRI-pinned) + CARTO basemap on OpenStreetMap data.
    Loaded lazily: if Leaflet or the tiles do not load (offline, blocked),
    the screens keep their decorative SVG and nothing breaks.
@@ -15,7 +15,7 @@
   };
   const TILES = "https://{s}.basemaps.cartocdn.com/{style}/{z}/{x}/{y}{r}.png";
   const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> · <a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps</a>';
-  const ALMATY = [[43.02, 76.55], [43.48, 77.3]];
+  const ALMATY = [[43.02, 76.55], [43.48, 77.3]];   // default city; others pass opts.bounds
 
   const mq = (q) => !!(window.matchMedia && window.matchMedia(q).matches);
   const reduce = mq("(prefers-reduced-motion: reduce)");
@@ -49,12 +49,13 @@
   }
 
   /* ---------------- Geometry (no Leaflet needed) ---------------- */
-  const KX = Math.cos(43.24 * Math.PI / 180) * 111320, KY = 110540;
-  const dist = (a, b) => Math.hypot((b[1] - a[1]) * KX, (b[0] - a[0]) * KY);
+  // metres per degree of longitude depend on the city's latitude (Almaty 43°, Kostanay 53°)
+  const KY = 110540;
+  const kxAt = (lat) => Math.cos(lat * Math.PI / 180) * 111320;
   function measure(pts) {
-    const cum = [0];
-    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + dist(pts[i - 1], pts[i]));
-    return { pts, cum, total: cum[cum.length - 1] || 0 };
+    const kx = kxAt(pts.length ? pts[0][0] : 43.24), cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot((pts[i][1] - pts[i - 1][1]) * kx, (pts[i][0] - pts[i - 1][0]) * KY));
+    return { pts, cum, kx, total: cum[cum.length - 1] || 0 };
   }
   function seg(m, d) { // index i so that cum[i] <= d <= cum[i+1]
     let lo = 0, hi = m.pts.length - 2;
@@ -70,7 +71,7 @@
   }
   function headingAt(m, d) { // degrees clockwise from north
     const a = pointAt(m, Math.max(0, d - 14)), b = pointAt(m, Math.min(m.total, d + 14));
-    return Math.atan2((b[1] - a[1]) * KX, (b[0] - a[0]) * KY) * 180 / Math.PI;
+    return Math.atan2((b[1] - a[1]) * (m.kx || kxAt(a[0])), (b[0] - a[0]) * KY) * 180 / Math.PI;
   }
   function slice(m, d0, d1) {
     d0 = Math.max(0, d0); d1 = Math.min(m.total, d1);
@@ -127,9 +128,12 @@
       dragging: !coarse, touchZoom: true,   // phones: one finger scrolls the page, two fingers zoom
       doubleClickZoom: true, keyboard: true, boxZoom: false,
       zoomSnap: 0.25, zoomDelta: 1, wheelPxPerZoomLevel: 110,
-      minZoom: 11, maxZoom: 18, maxBounds: ALMATY, maxBoundsViscosity: 0.9,
+      minZoom: 11, maxZoom: 18, maxBounds: opts.bounds || ALMATY, maxBoundsViscosity: 0.9,
       fadeAnimation: !reduce, zoomAnimation: !reduce, markerZoomAnimation: !reduce, inertia: !reduce
-    }).setView([43.238, 76.93], 13);
+    }).setView(opts.center || [43.238, 76.93], 13);
+    // city switch: bounds are lifted, the next fit flies across the country, then they lock again
+    let cityBounds = opts.bounds || ALMATY, flying = false;
+    const lockCity = () => { flying = false; map.setMinZoom(11); map.setMaxBounds(cityBounds); };
 
     map.createPane("labels");
     const lp = map.getPane("labels");
@@ -213,6 +217,12 @@
         el.style.setProperty("--lm-right", insets.right + "px");
       },
       invalidate() { if (sized()) map.invalidateSize({ pan: false, animate: false }); },
+      setCity(bounds) {
+        cityBounds = bounds;
+        map.setMaxBounds(null);
+        map.setMinZoom(3);
+        flying = true;
+      },
       fit(pts, animate, maxZoom) {
         lastFit = { pts, maxZoom };
         if (!sized() || !pts || !pts.length) return;
@@ -221,13 +231,16 @@
         const w = el.clientWidth, h = el.clientHeight;
         // labels sit above pins (top), controls on the right
         const side = Math.round(Math.min(72, el.clientWidth * 0.11));
-        let top = insets.top + 46, bottom = insets.bottom + 48, left = insets.left + side, right = insets.right + side + 6;
+        let top = insets.top + 46, bottom = insets.bottom + 62, left = insets.left + side, right = insets.right + side + 6;
         const sy = Math.max(0, top + bottom - (h - 90)), sx = Math.max(0, left + right - (w - 90));
         if (sy) { top -= sy / 2; bottom -= sy / 2; }
         if (sx) { left -= sx / 2; right -= sx / 2; }
         const o = { paddingTopLeft: [left, top], paddingBottomRight: [right, bottom], maxZoom: maxZoom || 16.25 };
-        if (animate && !reduce) map.flyToBounds(b, Object.assign(o, { duration: 0.9, easeLinearity: 0.3 }));
-        else map.fitBounds(b, Object.assign(o, { animate: false }));
+        if (flying && animate && !reduce) {
+          map.once("moveend", lockCity);
+          map.flyToBounds(b, Object.assign(o, { duration: 2.2, easeLinearity: 0.25 }));
+        } else if (animate && !reduce) map.flyToBounds(b, Object.assign(o, { duration: 0.9, easeLinearity: 0.3 }));
+        else { map.fitBounds(b, Object.assign(o, { animate: false })); if (flying) lockCity(); }
       },
       refit(animate) { if (lastFit) view.fit(lastFit.pts, animate, lastFit.maxZoom); }
     };

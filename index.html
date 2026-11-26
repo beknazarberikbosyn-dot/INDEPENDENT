@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Manrope:wght@500;600;700;800&family=Unbounded:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=202611261626" />
+  <link rel="stylesheet" href="styles.css?v=202611261721" />
 </head>
 <body>
   <!-- Desktop navigation (hidden on phones) -->
@@ -100,7 +100,7 @@
     <!-- ================= TAXI ================= -->
     <section class="screen" data-screen="taxi" hidden>
       <div class="top top-map">
-        <div class="live-map" id="taxiMap" role="region" aria-label="Карта поездки по Алматы" data-i18n-aria="map.taxi"></div>
+        <div class="live-map" id="taxiMap" role="region" aria-label="Карта поездки"></div>
         <div class="map-shade" aria-hidden="true"></div>
         <svg class="map-line" viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
           <path d="M-10 175 C 60 120, 110 190, 180 150 S 300 60, 410 95" fill="none" stroke="#1f6a5f" stroke-width="22" stroke-linecap="round"/>
@@ -115,6 +115,11 @@
         <button type="button" class="quote" data-mic><span class="quote-mic" aria-hidden="true"></span><span class="quote-txt" data-quote="taxi"></span></button>
       </div>
       <div class="sheet">
+        <button type="button" class="city-pill" data-city-open aria-haspopup="dialog">
+          <span class="city-pill-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s6.5-6 6.5-11a6.5 6.5 0 0 0-13 0c0 5 6.5 11 6.5 11z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg></span>
+          <span class="city-pill-txt"><small data-i18n="city.label">Город</small><b data-city-name>Алматы</b></span>
+          <span class="city-pill-go" data-i18n="city.change">Сменить</span>
+        </button>
         <div class="addr">
           <div class="addr-row"><span class="dot dot-from"></span><div><small data-i18n="taxi.from">Откуда</small><b id="taxiFrom"></b></div></div>
           <div class="addr-row"><span class="dot dot-to"></span><div><small data-i18n="taxi.to">Куда</small><b id="taxiTo"></b></div></div>
@@ -161,7 +166,7 @@
     <!-- ================= ROUTE ================= -->
     <section class="screen" data-screen="route" hidden>
       <div class="top top-cat top-route">
-        <div class="live-map" id="routeMap" role="region" aria-label="Карта маршрута автобуса" data-i18n-aria="map.route"></div>
+        <div class="live-map" id="routeMap" role="region" aria-label="Карта маршрута автобуса"></div>
         <div class="map-shade" aria-hidden="true"></div>
         <header class="bar">
           <button type="button" class="back" data-back aria-label="Назад" data-i18n-aria="back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -171,6 +176,11 @@
         <button type="button" class="quote" data-mic><span class="quote-mic" aria-hidden="true"></span><span class="quote-txt" data-quote="route"></span></button>
       </div>
       <div class="sheet">
+        <button type="button" class="city-pill" data-city-open aria-haspopup="dialog">
+          <span class="city-pill-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s6.5-6 6.5-11a6.5 6.5 0 0 0-13 0c0 5 6.5 11 6.5 11z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg></span>
+          <span class="city-pill-txt"><small data-i18n="city.label">Город</small><b data-city-name>Алматы</b></span>
+          <span class="city-pill-go" data-i18n="city.change">Сменить</span>
+        </button>
         <div class="addr">
           <div class="addr-row"><span class="dot dot-from"></span><div><small data-i18n="taxi.from">Откуда</small><b id="routeFrom"></b></div></div>
           <div class="addr-row"><span class="dot dot-to"></span><div><small data-i18n="taxi.to">Куда</small><b id="routeTo"></b></div></div>
@@ -216,6 +226,13 @@
         </div>
       </div>
       <div class="sheet">
+        <h3 class="sec" data-i18n="fam.city">Город</h3>
+        <div class="city-card" id="famCity">
+          <div class="kz-map" data-kz></div>
+          <div class="city-list" data-city-list role="group" aria-label="Город" data-i18n-aria="fam.city"></div>
+          <p class="city-note" id="famCityNote"></p>
+        </div>
+
         <h3 class="sec" data-i18n="fam.contacts">Экстренные контакты</h3>
         <div class="card list" id="famContacts"></div>
 
@@ -258,11 +275,23 @@
     </div>
   </div>
 
+  <!-- City picker (taxi / route): works as a plain list without the map library -->
+  <div class="overlay" id="cityOverlay" hidden>
+    <div class="city-dlg" role="dialog" aria-modal="true" aria-labelledby="cityTitle">
+      <h2 id="cityTitle" data-i18n="city.title">В каком вы городе?</h2>
+      <p class="city-dlg-lead" data-i18n="city.lead">Адреса, такси и автобусы будут для этого города</p>
+      <div class="kz-map" data-kz></div>
+      <div class="city-list" data-city-list role="group" aria-labelledby="cityTitle"></div>
+      <button type="button" class="btn-ghost" id="cityClose" data-i18n="city.close">Закрыть</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-  <script src="i18n.js?v=202611261626"></script>
-  <script src="routes.js?v=202611261626"></script>
-  <script src="map.js?v=202611261626"></script>
-  <script src="app.js?v=202611261626"></script>
+  <script src="i18n.js?v=202611261721"></script>
+  <script src="routes.js?v=202611261721"></script>
+  <script src="cities.js?v=202611261721"></script>
+  <script src="map.js?v=202611261721"></script>
+  <script src="app.js?v=202611261721"></script>
 </body>
 </html>
