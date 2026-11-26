@@ -39,7 +39,7 @@
     screen: "home",
     settings: Object.assign({}, DEFAULTS, saved, { services: Object.assign({}, DEFAULTS.services, saved.services || {}) }),
     log: store.get("log", []),
-    taxi: { dest: "home", status: "draft", quote: null },
+    taxi: { dest: "home", status: "draft", quote: null, ride: null, phase: "wait" },
     food: { items: null, status: "draft", quote: null },
     route: { dest: "clinic", quote: null },
     services: { kind: "plumber", status: "draft", quote: null }
@@ -55,13 +55,14 @@
      Data
      ========================================================== */
   const DEST = {
-    home:   { rx: /(дом|домой|үй)/i, ru: "Дом — ул. Сыганак, 21, кв. 34", kk: "Үй — Сығанақ к-сі, 21, 34-пәтер", chip: { ru: "Домой", kk: "Үйге" }, price: 1400, eta: 4, bus: 37, stop: { ru: "«Сыганак»", kk: "«Сығанақ»" } },
-    clinic: { rx: /(поликлиник|больниц|врач|клиник|емхана|аурухана|дәрігер)/i, ru: "Поликлиника №4 — ул. Кенесары, 8", kk: "№4 емхана — Кенесары к-сі, 8", chip: { ru: "В поликлинику", kk: "Емханаға" }, price: 1100, eta: 5, bus: 12, stop: { ru: "«Кенесары»", kk: "«Кенесары»" } },
-    kid:    { rx: /(доч|мадин|қызым|қызыма|қызға)/i, ru: "Мадина (дочь) — мкр. Самал-2, 25", kk: "Мадина (қызы) — Самал-2, 25", chip: { ru: "К дочери", kk: "Қызыма" }, price: 1900, eta: 6, bus: 92, stop: { ru: "«Самал»", kk: "«Самал»" } },
-    market: { rx: /(рын(ок|ку)|базар)/i, ru: "Зелёный базар — ул. Жибек Жолы, 53", kk: "Көк базар — Жібек жолы к-сі, 53", chip: { ru: "На базар", kk: "Базарға" }, price: 1600, eta: 7, bus: 63, stop: { ru: "«Зелёный базар»", kk: "«Көк базар»" } }
+    // Real Almaty addresses; map coordinates and street routes live in routes.js
+    home:   { rx: /(дом|домой|үй)/i, ru: "Дом — ул. Римского-Корсакова, 21, кв. 34", kk: "Үй — Римский-Корсаков к-сі, 21, 34-пәтер", chip: { ru: "Домой", kk: "Үйге" }, price: 1400, eta: 4, bus: 37, from: { ru: "«Аманжолова»", kk: "«Аманжолов»" }, stop: { ru: "«Габдулина»", kk: "«Ғабдуллин»" } },
+    clinic: { rx: /(поликлиник|больниц|врач|клиник|емхана|аурухана|дәрігер)/i, ru: "Поликлиника №4 — ул. Торайгырова, 16", kk: "№4 емхана — Торайғыров к-сі, 16", chip: { ru: "В поликлинику", kk: "Емханаға" }, price: 1100, eta: 5, bus: 12, from: { ru: "«Габдулина»", kk: "«Ғабдуллин»" }, stop: { ru: "«Поликлиника №4»", kk: "«№4 емхана»" } },
+    kid:    { rx: /(доч|мадин|қызым|қызыма|қызға)/i, ru: "Мадина (дочь) — мкр. Самал-2, 25", kk: "Мадина (қызы) — Самал-2, 25", chip: { ru: "К дочери", kk: "Қызыма" }, price: 1900, eta: 6, bus: 92, from: { ru: "«Аксакова»", kk: "«Ақсақов»" }, stop: { ru: "«Самал»", kk: "«Самал»" } },
+    market: { rx: /(рын(ок|ку)|базар)/i, ru: "Зелёный базар — ул. Жибек Жолы, 53", kk: "Көк базар — Жібек жолы к-сі, 53", chip: { ru: "На базар", kk: "Базарға" }, price: 1600, eta: 7, bus: 63, from: { ru: "«Габдулина»", kk: "«Ғабдуллин»" }, stop: { ru: "«Зелёный базар»", kk: "«Көк базар»" } }
   };
-  const ORIGIN = { ru: "пр. Кабанбай батыра, 12", kk: "Қабанбай батыр даңғ., 12" };
-  const HOME_SHORT = { ru: "Дом — ул. Сыганак, 21", kk: "Үй — Сығанақ к-сі, 21" };
+  const ORIGIN = { ru: "ул. Кабанбай батыра, 12", kk: "Қабанбай батыр к-сі, 12" };
+  const HOME_SHORT = { ru: "Дом — ул. Римского-Корсакова, 21", kk: "Үй — Римский-Корсаков к-сі, 21" };
 
   const LET = "a-zа-яёәғқңөұүһі";
   const NL = "[^" + LET + "]";
@@ -128,6 +129,7 @@
     el.scrollTop = 0; window.scrollTo(0, 0);
     $$(".dnav [data-go]").forEach((b) => { if (b.dataset.go === screen) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     if (screen === "home" && !listening) setIdleHint();
+    mapsOnShow(screen);
   }
   window.addEventListener("hashchange", () => show(location.hash.slice(1) || "home"));
   $$("[data-back]").forEach((b) => b.addEventListener("click", () => go("home")));
@@ -526,6 +528,308 @@
   }
 
   /* ==========================================================
+     «Живая карта Алматы»: real streets (routes.js) on a Leaflet map (map.js).
+     The ride / bus simulation runs without the map too: if Leaflet or the
+     tiles cannot load, the screens keep the decorative SVG and the texts still update.
+     ========================================================== */
+  const ROUTES = window.ROUTES || null;
+  const LM = window.LiveMap || null;
+  const DEMO = 8;                       // demo clock: 1 real second ≈ 8 simulated seconds
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const clock = (sec) => { const s = Math.max(0, Math.ceil(sec)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+  const ease = (p) => 0.75 * p + 0.25 * (0.5 - Math.cos(Math.PI * p) / 2);
+  const setText = (node, v) => { if (node && node.textContent !== v) node.textContent = v; };
+  const placeName = (k) => L(DEST[k].ru.split(" — ")[0], DEST[k].kk.split(" — ")[0]);
+  const fromPoint = (k) => (k === "home" ? ROUTES.points.origin : ROUTES.points.home);
+  const plural = (n, f) => { const a = n % 10, b = n % 100; return f[a === 1 && b !== 11 ? 0 : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 1 : 2]; };
+  const geoCache = {};
+  const geo = (key, pts) => geoCache[key] || (geoCache[key] = LM.measure(pts));
+  const hasRoutes = !!(ROUTES && LM);
+
+  /* ---- Taxi ride: wait → pickup → arrived → trip → finished ---- */
+  function ridePlan(dest) {
+    const d = DEST[dest];
+    const len = hasRoutes ? ROUTES.taxi[dest].len : d.eta * 900;
+    const pickupSim = d.eta * 60, tripSim = Math.max(5, Math.round(len / 400)) * 60;   // ~24 km/h in town
+    return { pickupSim, tripSim, pickupMs: clamp(pickupSim / DEMO, 18, 40) * 1000, waitMs: 6000, tripMs: clamp(tripSim / DEMO, 24, 45) * 1000 };
+  }
+  function ridePhase(now) {
+    const s = state.taxi;
+    if (s.status !== "done" || !s.ride) return { phase: "wait", p: 0, left: 0 };
+    const P = s.ride.plan;
+    let t = now - s.ride.t0;
+    if (t < P.pickupMs) return { phase: "pickup", p: t / P.pickupMs, left: P.pickupSim * (1 - t / P.pickupMs) };
+    t -= P.pickupMs;
+    if (t < P.waitMs) return { phase: "arrived", p: t / P.waitMs, left: 0 };
+    t -= P.waitMs;
+    if (t < P.tripMs) return { phase: "trip", p: t / P.tripMs, left: P.tripSim * (1 - t / P.tripMs) };
+    return { phase: "finished", p: 1, left: 0 };
+  }
+  function onRidePhase(prev, phase) {
+    const d = DEST[state.taxi.dest];
+    const msg = {
+      arrived: L("Серик подъехал. Белая Тойота Камри, номер семьсот семьдесят семь. Выходите не спеша.", "Серік келді. Ақ Тойота Камри, нөмірі жеті жүз жетпіс жеті. Асықпай шығыңыз."),
+      trip: L("Поехали. Я скажу, когда приедем.", "Жүрдік. Жеткенде айтамын."),
+      finished: L(`Приехали: ${placeName(state.taxi.dest)}. Хорошего дня!`, `Жеттік: ${placeName(state.taxi.dest)}. Күніңіз сәтті өтсін!`)
+    }[phase];
+    if (msg && prev !== "wait") { speak(msg); if (state.screen !== "taxi") toast(msg, 4500); }
+    if (state.screen === "taxi") renderTaxi();
+    if (phase === "trip" || (phase === "finished" && prev !== "trip")) taxiFit(true);
+    void d;
+  }
+  function taxiLive(now) {
+    const s = state.taxi, d = DEST[s.dest], r = ridePhase(now);
+    if (r.phase !== s.phase) { const prev = s.phase; s.phase = r.phase; onRidePhase(prev, r.phase); return; }
+    if (state.screen !== "taxi") return;
+    const row = {
+      wait:     [t("taxi.eta"), d.eta + " мин", L("Ждёт", "Күтуде"), "wait"],
+      pickup:   [L("Приедет через", "Келуіне қалды"), clock(r.left), L("Едет к вам", "Сізге келе жатыр"), "live"],
+      arrived:  [L("Машина", "Көлік"), L("Уже тут", "Келді"), L("Подъехал", "Келіп тұр"), "here"],
+      trip:     [L("Доедем через", "Жетуге қалды"), clock(r.left), L("В пути", "Жолда"), "live"],
+      finished: [L("Поездка", "Сапар"), L("На месте", "Жеттік"), L("Приехали", "Жеттік"), "here"]
+    }[r.phase];
+    const val = $("#taxiEta"), st = $("#taxiStatus");
+    setText($("#taxiEtaLbl"), row[0]); setText(val, row[1]);
+    val.classList.toggle("word", !/\d/.test(row[1]));
+    setText(st, row[2]);
+    if (st.className !== "driver-st " + row[3]) st.className = "driver-st " + row[3];
+    if (taxiMap.car) LM.tag(taxiMap.car, r.phase === "wait" ? d.eta + " мин" : r.phase === "pickup" || r.phase === "trip" ? clock(r.left) : "");
+  }
+
+  /* ---- Bus on the route screen: approach → at the stop → departs → next one ---- */
+  function busPlan(dest, first) {
+    const nextSim = (first ? 3 + (DEST[dest].bus % 7) : 12) * 60;
+    return { nextSim, approachMs: clamp(nextSim / DEMO, 20, 45) * 1000, dwellMs: 5000, departMs: 9000 };
+  }
+  function busPhase(now) {
+    const s = state.route;
+    if (!s.sim || s.sim.dest !== s.dest) s.sim = { dest: s.dest, t0: now, plan: busPlan(s.dest, true) };
+    for (;;) {
+      const P = s.sim.plan, total = P.approachMs + P.dwellMs + P.departMs;
+      let t = now - s.sim.t0;
+      if (t >= total) { s.sim = { dest: s.dest, t0: s.sim.t0 + total, plan: busPlan(s.dest, false) }; continue; }
+      if (t < P.approachMs) return { phase: "approach", p: t / P.approachMs, left: P.nextSim * (1 - t / P.approachMs) };
+      t -= P.approachMs;
+      if (t < P.dwellMs) return { phase: "dwell", p: t / P.dwellMs, left: 0 };
+      return { phase: "depart", p: (t - P.dwellMs) / P.departMs, left: 0 };
+    }
+  }
+  function routeLive(now) {
+    if (state.screen !== "route") return;
+    const r = busPhase(now), val = $("#routeNext");
+    const txt = r.phase === "approach" ? clock(r.left) : r.phase === "dwell" ? L("Сейчас", "Қазір") : L("Ушёл", "Кетті");
+    setText(val, txt);
+    val.classList.toggle("word", !/\d/.test(txt));
+  }
+
+  /* ---- Map views ---- */
+  const maps = {};
+  const MAP_EL = { taxi: "#taxiMap", route: "#routeMap" };
+  let mapBroken = false;
+  const taxiMap = { sig: "", group: null, car: null, parts: null, key: "" };
+  const routeMap = { sig: "", group: null, bus: null, parts: null, key: "" };
+  const desk = () => window.matchMedia("(min-width: 1024px)").matches;
+
+  function mapLabels(v) {
+    v.setLabels({ zoomIn: L("Приблизить", "Жақындату"), zoomOut: L("Отдалить", "Алыстату"),
+      fit: L("Показать весь маршрут", "Бүкіл бағытты көрсету"),
+      hint: L("Чтобы приблизить, нажмите на карту или «+»", "Жақындату үшін картаны не «+» басыңыз") });
+  }
+  function mapInsets(v) {
+    const top = v.el.closest(".top"), r = v.el.getBoundingClientRect();
+    if (!r.height) return;
+    let tp = 10, bt = 10;
+    [".bar", ".top-kicker"].forEach((sel) => {
+      const e = top.querySelector(sel);
+      if (e && e.offsetParent) { const q = e.getBoundingClientRect(); if (q.height) tp = Math.max(tp, q.bottom - r.top + 8); }
+    });
+    const q = top.querySelector(".quote");
+    if (q) bt = Math.max(bt, r.bottom - q.getBoundingClientRect().top + 8);
+    v.setInsets({ top: Math.round(tp), bottom: Math.round(bt), right: desk() ? 52 : 12, left: 12 });
+  }
+  function dropMaps() {
+    mapBroken = true;
+    Object.keys(MAP_EL).forEach((k) => { const top = $(MAP_EL[k]).closest(".top"); top.classList.remove("has-map"); top.classList.add("map-off"); });
+  }
+  function createMap(screen) {
+    const el = $(MAP_EL[screen]), top = el.closest(".top");
+    try {
+      const shade = top.querySelector(".map-shade");
+      maps[screen] = LM.create(el, {
+        onReady: () => { if (mapBroken) return; top.classList.add("has-map"); setTimeout(() => refreshMap(screen), 700); },
+        onFail: dropMaps
+      });
+      // the shade lives inside the map: over tiles and markers, under the zoom buttons
+      if (shade) el.appendChild(shade);
+    } catch (e) { dropMaps(); return; }
+    mapLabels(maps[screen]);
+    mapInsets(maps[screen]);
+    if (screen === "taxi") syncTaxiMap(); else syncRouteMap();
+  }
+  function refreshMap(screen) {
+    const v = maps[screen];
+    if (!v || state.screen !== screen) return;
+    requestAnimationFrame(() => { v.invalidate(); mapInsets(v); v.refit(false); });
+  }
+  function mapsOnShow(screen) {
+    if (!MAP_EL[screen] || mapBroken || !hasRoutes) return;
+    LM.load().then((ok) => {
+      if (!ok) { dropMaps(); return; }
+      if (state.screen !== screen) return;
+      if (!maps[screen]) createMap(screen);
+      refreshMap(screen);
+    });
+  }
+  let resizeTimer;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => refreshMap(state.screen), 180); });
+
+  /* Taxi map: route (casing + marching dots), pickup path, pins, car */
+  function taxiFit(animate) {
+    const v = maps.taxi;
+    if (!v) return;
+    const s = state.taxi, T = ROUTES.taxi[s.dest];
+    const pts = (s.phase === "trip" || s.phase === "finished") ? T.route : T.route.concat(T.pickup);
+    v.invalidate(); mapInsets(v);
+    v.fit(pts.concat([fromPoint(s.dest), ROUTES.points[s.dest]]), animate);
+  }
+  function syncTaxiMap() {
+    const v = maps.taxi;
+    if (!v) return;
+    const s = state.taxi, sig = s.dest + "|" + state.lang;
+    if (sig === taxiMap.sig) return;
+    const prevDest = taxiMap.sig ? taxiMap.sig.split("|")[0] : null;
+    taxiMap.sig = sig; taxiMap.key = "";
+    if (taxiMap.group) taxiMap.group.remove();
+    const g = taxiMap.group = v.group(), T = ROUTES.taxi[s.dest];
+    v.line(g, T.route, "casing"); v.line(g, T.route, "mid");
+    taxiMap.parts = { done: v.line(g, [], "done"), todo: v.line(g, T.route, "dots"), pick: v.line(g, T.pickup, "pickup") };
+    v.marker(g, fromPoint(s.dest), v.icon.pinA(L("Вы здесь", "Сіз осындасыз")), 100);
+    v.marker(g, ROUTES.points[s.dest], v.icon.pinB(placeName(s.dest)), 200);
+    taxiMap.car = v.marker(g, T.pickup[0], v.icon.car(), 500);
+    mapLabels(v);
+    moveTaxi(Date.now());
+    taxiLive(Date.now());
+    if (prevDest !== s.dest) taxiFit(!!prevDest);
+  }
+  function moveTaxi(now) {
+    if (!maps.taxi || !taxiMap.car) return;
+    const s = state.taxi, T = ROUTES.taxi[s.dest];
+    const pick = geo("p" + s.dest, T.pickup), route = geo("r" + s.dest, T.route);
+    const r = ridePhase(now);
+    const p = LM.reduce ? Math.floor(r.p * 4) / 4 : r.p;
+    const key = r.phase + p.toFixed(4);
+    if (key === taxiMap.key) return;
+    taxiMap.key = key;
+    let pos, head, pickLeft = [], done = [], todo = T.route;
+    if (r.phase === "wait") { pos = pick.pts[0]; head = LM.headingAt(pick, 0); pickLeft = T.pickup; }
+    else if (r.phase === "pickup") { const dd = pick.total * ease(p); pos = LM.pointAt(pick, dd); head = LM.headingAt(pick, dd); pickLeft = LM.slice(pick, dd, pick.total); }
+    else if (r.phase === "arrived") { pos = route.pts[0]; head = LM.headingAt(route, 0); }
+    else if (r.phase === "trip") { const dd = route.total * ease(p); pos = LM.pointAt(route, dd); head = LM.headingAt(route, dd); done = LM.slice(route, 0, dd); todo = LM.slice(route, dd, route.total); }
+    else { pos = route.pts[route.pts.length - 1]; head = LM.headingAt(route, route.total); done = T.route; todo = []; }
+    taxiMap.car.setLatLng(pos);
+    LM.rotate(taxiMap.car, head);
+    taxiMap.parts.pick.setLatLngs(pickLeft);
+    taxiMap.parts.done.setLatLngs(done);
+    taxiMap.parts.todo.setLatLngs(todo);
+  }
+
+  /* Route map: walk (dotted) → bus line (solid) → walk, stops, live bus */
+  function routeSegments(dest) {
+    const B = ROUTES.bus[dest], last = B.bus[B.bus.length - 1];
+    return [B.walk1.concat([B.bus[0]]), B.bus, [last].concat(B.walk2)];
+  }
+  function routeFit(animate) {
+    const v = maps.route;
+    if (!v) return;
+    const s = state.route, B = ROUTES.bus[s.dest], segs = routeSegments(s.dest);
+    v.invalidate(); mapInsets(v);
+    if (s.focus == null) v.fit(B.walk1.concat(B.bus, B.walk2, B.approach.slice(0, 1)), animate);
+    else v.fit(segs[s.focus], animate, s.focus === 1 ? 16.25 : 17);
+  }
+  function highlightRoute() {
+    const v = maps.route, P = routeMap.parts;
+    if (!v || !P) return;
+    const f = state.route.focus, on = (i) => f == null || f === i;
+    P.walk1.setStyle({ opacity: on(0) ? 0.95 : 0.3, weight: f === 0 ? 7 : 5 });
+    P.busCase.setStyle({ opacity: on(1) ? 0.72 : 0.25 });
+    P.bus.setStyle({ opacity: on(1) ? 1 : 0.3, weight: f === 1 ? 9 : 7 });
+    P.walk2.setStyle({ opacity: on(2) ? 0.95 : 0.3, weight: f === 2 ? 7 : 5 });
+  }
+  function syncRouteMap() {
+    const v = maps.route;
+    if (!v) return;
+    const s = state.route, sig = s.dest + "|" + state.lang;
+    if (sig === routeMap.sig) return;
+    const prevDest = routeMap.sig ? routeMap.sig.split("|")[0] : null;
+    routeMap.sig = sig; routeMap.key = "";
+    if (routeMap.group) routeMap.group.remove();
+    const g = routeMap.group = v.group(), B = ROUTES.bus[s.dest], d = DEST[s.dest];
+    routeMap.parts = {
+      approach: v.line(g, B.approach, "approach"),
+      walk1: v.line(g, B.walk1, "walk"),
+      busCase: v.line(g, B.bus, "busCase"),
+      bus: v.line(g, B.bus, "bus"),
+      walk2: v.line(g, B.walk2, "walk")
+    };
+    B.stops.forEach((p) => v.marker(g, p, v.icon.stop(), 40));
+    v.marker(g, B.bus[0], v.icon.stop(L(d.from.ru, d.from.kk)), 60);
+    v.marker(g, B.bus[B.bus.length - 1], v.icon.stop(L(d.stop.ru, d.stop.kk)), 60);
+    v.marker(g, fromPoint(s.dest), v.icon.pinA(L("Вы здесь", "Сіз осындасыз")), 100);
+    v.marker(g, ROUTES.points[s.dest], v.icon.pinB(placeName(s.dest)), 200);
+    routeMap.bus = v.marker(g, B.approach[0], v.icon.bus("№" + d.bus), 500);
+    mapLabels(v);
+    highlightRoute();
+    moveBus(Date.now());
+    routeLive(Date.now());
+    if (prevDest !== s.dest) routeFit(!!prevDest);
+  }
+  function moveBus(now) {
+    if (!maps.route || !routeMap.bus) return;
+    const s = state.route, B = ROUTES.bus[s.dest];
+    const ap = geo("a" + s.dest, B.approach), line = geo("b" + s.dest, B.bus);
+    const r = busPhase(now);
+    const p = LM.reduce ? Math.floor(r.p * 4) / 4 : r.p;
+    const key = r.phase + p.toFixed(4);
+    if (key === routeMap.key) return;
+    routeMap.key = key;
+    let pos, left = [];
+    if (r.phase === "approach") { const dd = ap.total * ease(p); pos = LM.pointAt(ap, dd); left = LM.slice(ap, dd, ap.total); }
+    else if (r.phase === "dwell") pos = B.bus[0];
+    else pos = LM.pointAt(line, Math.min(line.total, 1500) * p);
+    routeMap.bus.setLatLng(pos);
+    const elx = routeMap.bus.getElement();
+    if (elx) elx.classList.toggle("is-gone", r.phase === "depart" && p > 0.8);
+    routeMap.parts.approach.setLatLngs(left);
+  }
+
+  function focusStep(i, text) {
+    const s = state.route;
+    s.focus = s.focus === i ? null : i;
+    $$("#routeSteps li").forEach((li, j) => {
+      li.classList.toggle("is-active", j === s.focus);
+      const b = li.querySelector("button");
+      if (b) b.setAttribute("aria-pressed", String(j === s.focus));
+    });
+    if (s.focus != null) speak(text);
+    highlightRoute();
+    routeFit(true);
+  }
+
+  /* Ticks: texts + phase changes 4×/s; markers every frame (or in steps with reduced motion) */
+  setInterval(() => {
+    const now = Date.now();
+    taxiLive(now); routeLive(now);
+    if (reduceMotion && !document.hidden) { if (state.screen === "taxi") moveTaxi(now); if (state.screen === "route") moveBus(now); }
+  }, 250);
+  if (!reduceMotion) {
+    const frame = () => {
+      if (!document.hidden) { const now = Date.now(); if (state.screen === "taxi") moveTaxi(now); else if (state.screen === "route") moveBus(now); }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }
+
+  /* ==========================================================
      Screens
      ========================================================== */
   function renderHome() {
@@ -540,25 +844,33 @@
 
   function renderTaxi() {
     const s = state.taxi, d = DEST[s.dest];
+    if (s.status !== "done") { s.ride = null; s.phase = "wait"; }
     $('[data-quote="taxi"]').textContent = s.quote || L("Скажите, куда поехать", "Қайда бару керегін айтыңыз");
     $("#taxiFrom").textContent = s.dest === "home" ? L(ORIGIN.ru, ORIGIN.kk) : L(HOME_SHORT.ru, HOME_SHORT.kk);
     $("#taxiTo").textContent = L(d.ru, d.kk);
     $("#taxiPrice").textContent = "≈" + money(d.price);
-    $("#taxiEta").textContent = d.eta + L(" мин", " мин");
     chipRow($("#taxiDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => {
       if (s.status === "done" || s.status === "pending") return;
       s.dest = k; s.quote = null; renderTaxi();
     });
-    const st = $("#taxiStatus");
-    st.textContent = s.status === "done" ? L("В пути", "Жолда") : L("Ждёт", "Күтуде");
-    st.classList.toggle("wait", s.status !== "done");
     const label = { ru: "Такси: " + d.chip.ru.toLowerCase(), kk: "Такси: " + d.chip.kk.toLowerCase(), btn: L("Да, вызвать", "Иә, шақыру") };
+    const doneText = {
+      arrived: L("Серик подъехал: белая Camry, 777 AKA 01. Выходите не спеша", "Серік келді: ақ Camry, 777 AKA 01. Асықпай шығыңыз"),
+      trip: L(`Едем ${d.chip.ru.toLowerCase()}. Можно отдыхать`, `${d.chip.kk} бара жатырмыз. Демала беріңіз`),
+      finished: L("Приехали! Хорошего дня", "Жеттік! Күніңіз сәтті өтсін")
+    }[s.phase] || L(`Такси вызвано — Серик будет через ${d.eta} мин`, `Такси шақырылды — Серік ${d.eta} минутта келеді`);
+    const extra = s.phase === "trip" ? null
+      : s.phase === "finished" ? btn("btn-sub", L("Новая поездка", "Жаңа сапар"), () => { s.status = "draft"; renderTaxi(); taxiFit(true); })
+      : btn("btn-sub", L("Отменить поездку", "Сапарды болдырмау"), () => { s.status = "draft"; state.settings.spent -= d.price; save(); renderTaxi(); taxiFit(true); });
     actions("taxi", "taxi", d.price, label, () => {
       finishOrder("taxi", d.price, label);
+      s.ride = { t0: Date.now(), plan: ridePlan(s.dest) };
+      s.phase = "pickup";
       speak(L(`Такси вызвано. Серик приедет через ${d.eta} минуты.`, `Такси шақырылды. Серік ${d.eta} минутта келеді.`));
       renderTaxi();
-    }, L(`Такси вызвано — Серик будет через ${d.eta} мин`, `Такси шақырылды — Серік ${d.eta} минутта келеді`),
-    btn("btn-sub", L("Отменить поездку", "Сапарды болдырмау"), () => { s.status = "draft"; state.settings.spent -= d.price; save(); renderTaxi(); }));
+    }, doneText, extra);
+    syncTaxiMap();
+    taxiLive(Date.now());
   }
 
   function foodSum() {
@@ -612,24 +924,38 @@
     $("#routeFrom").textContent = s.dest === "home" ? L(ORIGIN.ru, ORIGIN.kk) : L(HOME_SHORT.ru, HOME_SHORT.kk);
     $("#routeTo").textContent = L(d.ru, d.kk);
     $("#routeBus").textContent = "№" + d.bus;
-    const next = 3 + (d.bus % 7);
-    $("#routeNext").textContent = next + L(" мин", " мин");
-    chipRow($("#routeDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => { s.dest = k; s.quote = null; renderRoute(); });
-    const stops = 3 + (d.bus % 5);
+    chipRow($("#routeDest"), Object.keys(DEST), s.dest, (k) => L(DEST[k].chip.ru, DEST[k].chip.kk), (k) => { s.dest = k; s.quote = null; s.focus = null; renderRoute(); });
+    // minutes on foot (elderly pace ~60 m/min) and bus stops come from the real street geometry
+    const B = hasRoutes ? ROUTES.bus[s.dest] : null;
+    const w1 = B ? Math.max(1, Math.round(B.walk1Len / 60)) : 3;
+    const w2 = B ? Math.max(1, Math.round(B.walk2Len / 60)) : 2;
+    const stops = B ? B.stopsCount : 3 + (d.bus % 5);
+    const ride = B ? Math.max(3, Math.round(B.len / 280)) : stops * 4;
+    const MIN = ["минуту", "минуты", "минут"];
     const steps = [
-      L("Пешком 3 минуты до остановки «Абая»", "«Абай» аялдамасына жаяу 3 минут"),
-      L(`Автобус №${d.bus}, ${stops} остановок (~${stops * 4} мин)`, `№${d.bus} автобус, ${stops} аялдама (~${stops * 4} мин)`),
-      L(`Выйти на остановке ${d.stop.ru}, 2 минуты пешком`, `${d.stop.kk} аялдамасында түсіп, жаяу 2 минут`)
+      L(`Пешком ${w1} ${plural(w1, MIN)} до остановки ${d.from.ru}`, `${d.from.kk} аялдамасына жаяу ${w1} минут`),
+      L(`Автобус №${d.bus}, ${stops} ${plural(stops, ["остановка", "остановки", "остановок"])} (~${ride} мин)`, `№${d.bus} автобус, ${stops} аялдама (~${ride} мин)`),
+      L(`Выйти на остановке ${d.stop.ru}, ${w2} ${plural(w2, MIN)} пешком`, `${d.stop.kk} аялдамасында түсіп, жаяу ${w2} минут`)
     ];
     const ol = $("#routeSteps");
     ol.innerHTML = "";
-    steps.forEach((x) => ol.append(el("li", "", esc(x))));
+    steps.forEach((x, i) => {
+      const li = el("li", s.focus === i ? "is-active" : "");
+      const b = btn("step-btn", x, () => focusStep(i, x));
+      b.setAttribute("aria-pressed", String(s.focus === i));
+      b.title = L("Показать на карте и озвучить", "Картада көрсету және айту");
+      b.append(el("span", "step-pin", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6.5-6 6.5-11a6.5 6.5 0 0 0-13 0c0 5 6.5 11 6.5 11z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="10" r="2.3" fill="currentColor"/></svg>'));
+      li.append(b);
+      ol.append(li);
+    });
     const a = $('[data-actions="route"]');
     a.innerHTML = "";
     a.append(btn("btn-main", L("Озвучить маршрут", "Бағытты айту"), () => speak(steps.join(". "))));
     a.append(btn("btn-sub", L("Не хочу ждать — вызвать такси", "Күткім келмейді — такси шақыру"), () => {
       Object.assign(state.taxi, { dest: s.dest, status: "draft", quote: null }); go("taxi");
     }));
+    syncRouteMap();
+    routeLive(Date.now());
   }
 
   function renderServices() {
@@ -792,6 +1118,8 @@
   show(location.hash.slice(1) || "home");
   cycleHints();
   if (reduceMotion) drawRays(0); else requestAnimationFrame(rayLoop);
+  // fetch the map library in the background, so the taxi / route maps open instantly
+  if (hasRoutes) setTimeout(() => LM.load(), 1200);
 
   /* ---------------- Micro-interactions ---------------- */
   const RIPPLE = ".tile, .help-btn, .btn-main, .btn-sub, .chip, .pill-btn, .kind, .quote, .dnav-help, .btn-light, .btn-red, .mini-btn, .step";
