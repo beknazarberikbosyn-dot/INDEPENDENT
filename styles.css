@@ -763,3 +763,56 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); ou
   .city-dlg { max-width: 680px; padding: 28px 26px 14px; }
   .city-dlg .city-list { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ==========================================================
+   Profile: registration wizard + "my data"
+   ========================================================== */
+.pf-head small { font-size: 14px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--yellow); }
+.pf-head h2 { font-family: var(--head); font-weight: 800; font-size: 28px; line-height: 1.12; margin: 8px 0 6px; }
+.pf-head p { margin: 0; color: rgba(255,255,255,.8); font-size: 17px; max-width: 460px; }
+.pf-head { margin-top: 18px; }
+.pf-dots { display: flex; gap: 8px; margin-top: 16px; }
+.pf-dots i { width: 34px; height: 8px; border-radius: 4px; background: rgba(255,255,255,.2); transition: background .3s, width .3s; }
+.pf-dots i.on { background: var(--yellow); width: 46px; }
+.pf-form fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.pf-form legend { padding: 0; }
+.pf-step + .pf-step { margin-top: 8px; }
+.pf-card { padding: 16px 18px; display: grid; gap: 14px; }
+.pf-card + .pf-card { margin-top: 12px; }
+.pf-field { display: grid; gap: 6px; }
+.pf-field > span:first-child { font-weight: 800; font-size: 17px; }
+.pf-field input, .pf-field select {
+  width: 100%; min-width: 0; font: inherit; font-size: 19px; font-weight: 600; color: var(--ink);
+  padding: 14px 16px; border-radius: 16px; border: 2px solid var(--line); background: #fff;
+}
+.pf-field input:focus, .pf-field select:focus { outline: none; border-color: var(--g800); box-shadow: 0 0 0 4px rgba(242,181,49,.35); }
+.pf-input { display: flex; gap: 8px; }
+.pf-input input { flex: 1; }
+.pf-mic {
+  flex: none; width: 54px; border-radius: 16px; background: var(--yellow) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='9' y='3' width='6' height='11' rx='3' fill='%230f3a34'/%3E%3Cpath d='M6 11a6 6 0 0 0 12 0M12 17v3.5' fill='none' stroke='%230f3a34' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") center / 26px no-repeat;
+  box-shadow: 0 3px 0 var(--yellow-d);
+}
+.pf-mic.is-listening { animation: pulse 1.2s ease-in-out infinite; }
+.pf-hint { font-size: 14px; font-weight: 600; color: var(--muted); }
+.pf-short { max-width: 180px; }
+.pf-contact-t { font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #6b5a3a; }
+.pf-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pf-seg button { padding: 14px; border-radius: 16px; border: 2px solid var(--line); background: #fff; font-weight: 800; font-size: 18px; }
+.pf-seg button[aria-pressed="true"] { background: var(--g800); color: #fff; border-color: var(--g800); }
+.pf-error { margin: 14px 0 0; padding: 12px 14px; border-radius: 14px; background: #fbe0d6; color: var(--warn); font-weight: 700; }
+.pf-nav { display: flex; gap: 10px; margin-top: 18px; }
+.pf-nav .btn-sub { width: auto; flex: 0 0 34%; }
+.pf-nav .btn-main { flex: 1; }
+.pf-demo { display: block; margin: 14px auto 0; font-weight: 700; font-size: 15px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; padding: 8px; }
+.pf-privacy { text-align: center; font-size: 14px; color: var(--muted); font-weight: 600; margin: 10px 8px 0; }
+.pf-summary { padding: 6px 18px 16px; }
+.pf-summary .pill-btn { margin-top: 10px; }
+.pf-demo-note { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #fff3d6; color: #7a5300; font-weight: 700; font-size: 15px; }
+.home-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; margin-top: 12px; }
+.home-links .family-link { margin: 0; }
+.mini-me { background: var(--yellow); color: var(--g800); }
+body.is-onboarding .dnav-links, body.is-onboarding .dnav-help { visibility: hidden; }
+body.is-onboarding [data-screen="profile"] [data-back] { visibility: hidden; }
+@media (min-width: 1024px) {
+  .pf-head h2 { font-size: 40px; }
+}

@@ -48,9 +48,48 @@
   const save = () => { store.set("settings", state.settings); store.set("log", state.log.slice(0, 30)); };
 
   const L = (ru, kk) => (state.lang === "kk" ? kk : ru);
-  const t = (key) => { const d = window.I18N[state.lang] || window.I18N.ru; return d[key] != null ? d[key] : (window.I18N.ru[key] || key); };
+  const t = (key) => {
+    const d = window.I18N[state.lang] || window.I18N.ru;
+    const v = d[key] != null ? d[key] : (window.I18N.ru[key] || key);
+    return String(v).replace(/\{name\}/g, userName());
+  };
   const money = (n) => n.toLocaleString("ru-RU").replace(/\s/g, " ") + " ₸";
   const first = () => state.settings.contacts[0];
+
+  /* ==========================================================
+     Profile (first-run registration, editable any time)
+     ========================================================== */
+  // Who the contact is: forms used on screen and in speech (dative needs no declension of the name)
+  const REL = {
+    daughter:      { ru: { nom: "дочь", dat: "дочери", to: "К дочери" }, kk: { nom: "қызы", dat: "қызыңызға", to: "Қызыма" }, fem: true, words: "доч|қыз" },
+    son:           { ru: { nom: "сын", dat: "сыну", to: "К сыну" }, kk: { nom: "ұлы", dat: "ұлыңызға", to: "Ұлыма" }, words: "сын|ұл" },
+    granddaughter: { ru: { nom: "внучка", dat: "внучке", to: "К внучке" }, kk: { nom: "немересі", dat: "немереңізге", to: "Немереме" }, fem: true, words: "внуч|немере" },
+    grandson:      { ru: { nom: "внук", dat: "внуку", to: "К внуку" }, kk: { nom: "немересі", dat: "немереңізге", to: "Немереме" }, words: "внук|немере" },
+    spouse:        { ru: { nom: "супруг(а)", dat: "супругу", to: "К супругу" }, kk: { nom: "жұбайы", dat: "жұбайыңызға", to: "Жұбайыма" }, words: "муж|жен[аеуы]|супруг|жұбай|күйеу|әйел" },
+    sister:        { ru: { nom: "сестра", dat: "сестре", to: "К сестре" }, kk: { nom: "әпкесі", dat: "әпкеңізге", to: "Әпкеме" }, fem: true, words: "сестр|әпке|сіңлі|қарындас" },
+    brother:       { ru: { nom: "брат", dat: "брату", to: "К брату" }, kk: { nom: "бауыры", dat: "бауырыңызға", to: "Бауырыма" }, words: "брат|бауыр|аға|іні" },
+    other:         { ru: { nom: "близкий человек", dat: "близкому", to: "К близким" }, kk: { nom: "жақыны", dat: "жақыныңызға", to: "Жақындарыма" }, words: "близк|родн|жақын|туыс" }
+  };
+  const DEMO_PROFILE = {
+    demo: true, name: "Айгуль", lang: "ru", city: "almaty", home: "", flat: "",
+    contacts: [{ name: "Мадина", rel: "daughter", phone: "+7 701 000 00 21", addr: "" }, { name: "Ерлан", rel: "son", phone: "+7 777 000 00 08", addr: "" }]
+  };
+  const profile = () => state.settings.profile || DEMO_PROFILE;
+  const userName = () => profile().name || "";
+  const escRx = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function buildContacts(pf) {
+    return pf.contacts.filter((c) => c && c.name).map((c, i) => {
+      const r = REL[c.rel] || REL.other;
+      return { id: "c" + i, name: c.name, rel: c.rel, fem: !!r.fem, addr: c.addr || "",
+        ru: `${c.name}, ${r.ru.nom}`, kk: `${c.name}, ${r.kk.nom}`, short: { ru: r.ru.dat, kk: r.kk.dat },
+        phone: c.phone || "—", av: c.name.trim().charAt(0).toUpperCase(), color: ["salmon", "blue", "mint"][i % 3] };
+    });
+  }
+  // matches «позвони Мадине», «позвони дочке», «қызыма қоңырау шал»
+  const contactRx = (c) => new RegExp(`(${escRx(c.name.toLowerCase().slice(0, Math.max(3, c.name.length - 2)))}|${(REL[c.rel] || REL.other).words})`, "i");
+  state.settings.contacts = buildContacts(profile());
+  // Relatives' verbs: «Мадина одобрила» / «Ерлан одобрил»
+  const verb = (c, ru) => (c && c.fem === false ? ru.replace(/а$/, "") : ru);
 
   /* ==========================================================
      Data
@@ -79,6 +118,25 @@
     Object.keys(DEST).forEach((k) => { const d = c.dest[k]; if (d) Object.assign(DEST[k], { ru: d.ru, kk: d.kk, from: d.from, stop: d.stop }); });
     Object.assign(ORIGIN, c.origin);
     Object.assign(HOME_SHORT, c.homeShort);
+    applyProfile();
+  }
+  // The registered user's own home and relative replace the city's demo addresses (map pins stay in that district)
+  function applyProfile() {
+    const pf = profile();
+    if (pf.home) {
+      DEST.home.ru = "Дом — " + pf.home + (pf.flat ? ", кв. " + pf.flat : "");
+      DEST.home.kk = "Үй — " + pf.home + (pf.flat ? ", " + pf.flat + "-пәтер" : "");
+      HOME_SHORT.ru = "Дом — " + pf.home; HOME_SHORT.kk = "Үй — " + pf.home;
+    }
+    const c0 = state.settings.contacts[0];
+    if (c0) {
+      const r = REL[c0.rel] || REL.other;
+      const tail = (x) => x.split(" — ").slice(1).join(" — ") || x;
+      DEST.kid.ru = `${c0.name} (${r.ru.nom}) — ${c0.addr || tail(DEST.kid.ru)}`;
+      DEST.kid.kk = `${c0.name} (${r.kk.nom}) — ${c0.addr || tail(DEST.kid.kk)}`;
+      DEST.kid.chip = { ru: r.ru.to, kk: r.kk.to };
+      DEST.kid.rx = contactRx(c0);
+    }
   }
   cityTexts(state.settings.city);
   const CITY_RX = CITY_IDS.filter((id) => cityOf(id)).map((id) => [id, new RegExp(cityOf(id).rx, "i")]);
@@ -425,6 +483,7 @@
     help: /(плохо|скор(ая|ую)|помогите|спасите|упал|болит|на помощь|sos|сос|жедел|жаным ауыр|құтқар|құлап|ауырып|көмекке)/i,
     call: /(позвон|набери|созвон|қоңырау|хабарлас)/i,
     son: /(сын|ерлан|ұлым|ұлыма)/i,
+    profile: /(мои данные|мой адрес|профил|регистрац|измени(ть)?\s+(мои|имя|адрес|телефон|данн)|деректер|тіркел|мекенжайым)/i,
     homeNav: /(главн|назад|в начало|меню|басты|артқа)/i,
     family: /(настройк|родственник|лимит|баптау|туыс)/i,
     taxi: /(такси|поехать|поеду|отвез|довез|жеткіз|апар|көлік|барғым)/i,
@@ -482,8 +541,7 @@
     // 1) Emergency first
     if (RX.help.test(s)) { reply(L("Зову на помощь.", "Көмекке шақырып жатырмын.")); return openHelp(0); }
     if (RX.call.test(s)) {
-      const i = RX.son.test(s) ? 1 : 0;
-      const c = state.settings.contacts.findIndex((x) => x.id === (i ? "e" : "m"));
+      const c = state.settings.contacts.findIndex((x) => contactRx(x).test(s));
       reply(L("Звоню.", "Қоңырау шалып жатырмын."));
       return openHelp(Math.max(0, c), true);
     }
@@ -502,6 +560,7 @@
     if (cur !== "home" && RX.no.test(s)) { reply(L("Хорошо, отменила.", "Жарайды, тоқтаттым.")); return go("home"); }
 
     // 3) Navigation
+    if (RX.profile.test(s)) return reply(L("Открываю ваши данные. Можно всё поменять.", "Деректеріңізді ашамын. Бәрін өзгертуге болады."), "profile");
     if (RX.family.test(s)) return reply(L("Открываю настройки родственника.", "Туыс баптауларын ашамын."), "family");
     if (RX.homeNav.test(s) && !RX.taxi.test(s)) return reply(L("Возвращаюсь на главный экран.", "Басты бетке ораламын."), "home");
 
@@ -578,7 +637,7 @@
     const fn = pendingApprovals.get(id);
     if (!fn) return;
     pendingApprovals.delete(id);
-    if (auto) toast(L(`${first().ru.split(",")[0]} одобрила заказ`, `${first().kk.split(",")[0]} тапсырысты мақұлдады`));
+    if (auto) toast(L(`${first().name} ${verb(first(), "одобрила")} заказ`, `${first().name} тапсырысты мақұлдады`));
     fn();
     render();
   }
@@ -594,7 +653,7 @@
       const e = state.log.find((x) => x.kind === "enable" && x.service === service && x.status === "pending");
       if (e) e.status = "ok";
       save();
-      toast(L(`${c.ru.split(",")[0]} включила: ${SERVICE_NAME[service].ru}`, `${c.kk.split(",")[0]} қосты: ${SERVICE_NAME[service].kk}`));
+      toast(L(`${c.name} ${verb(c, "включила")}: ${SERVICE_NAME[service].ru}`, `${c.name} қосты: ${SERVICE_NAME[service].kk}`));
       render();
     }, 4000);
   }
@@ -631,14 +690,14 @@
     if (note) note.textContent = "";
     const st = state[screen].status;
     if (service && !state.settings.services[service]) {
-      a.append(box("wait-box", L(`${first().ru.split(",")[0]} пока не включила ${SERVICE_NAME[service].ru}.`, `${first().kk.split(",")[0]} әзірге ${SERVICE_NAME[service].kk} қоспаған.`)));
+      a.append(box("wait-box", L(`${first().name} пока не ${verb(first(), "включила")} ${SERVICE_NAME[service].ru}.`, `${first().name} әзірге ${SERVICE_NAME[service].kk} қоспаған.`)));
       const asked = state.log.some((x) => x.kind === "enable" && x.service === service && x.status === "pending");
       a.append(asked ? box("wait-box", L("Запрос отправлен, ждём ответа…", "Сұрау жіберілді, жауап күтудеміз…"))
                      : btn("btn-main alt", L(`Попросить ${first().short.ru} включить`, `${first().short.kk} қосуды сұрау`), () => requestEnable(service)));
       return;
     }
     if (st === "done") { a.append(box("done-box", doneText)); if (extra) a.append(extra); return; }
-    if (st === "pending") { a.append(box("wait-box", L(`Ждём подтверждения от ${first().ru.split(",")[0]}…`, `${first().kk.split(",")[0]} растауын күтудеміз…`))); return; }
+    if (st === "pending") { a.append(box("wait-box", L(`Ждём подтверждения от ${first().name}…`, `${first().name} растауын күтудеміз…`))); return; }
     const over = limitNote(screen, sum);
     if (over) {
       if (state.settings.askOverLimit)
@@ -989,7 +1048,8 @@
       const lock = $(`[data-lock="${k}"]`);
       lock.hidden = on; lock.textContent = L("выкл.", "өшір.");
     });
-    $(".family-link .mini-av").textContent = first().av;
+    $('.family-link[data-go="family"] .mini-av').textContent = first() ? first().av : "?";
+    $("#meAv").textContent = (userName().charAt(0) || "?").toUpperCase();
   }
 
   function renderTaxi() {
@@ -1173,6 +1233,14 @@
   }
 
   function renderFamily() {
+    $("#famAv").textContent = (userName().charAt(0) || "?").toUpperCase();
+    const pf = profile();
+    const sum = $("#famProfile");
+    sum.innerHTML = "";
+    [[L("Имя", "Аты"), pf.name], [L("Город", "Қала"), cityName(pf.city)], [L("Адрес", "Мекенжай"), L(DEST.home.ru, DEST.home.kk).replace(/^(Дом|Үй) — /, "")]]
+      .forEach(([a, b]) => sum.append(el("div", "row", `<div class="row-txt"><small>${esc(a)}</small><b>${esc(b)}</b></div>`)));
+    if (pf.demo) sum.append(el("p", "pf-demo-note", esc(L("Сейчас стоят демо-данные. Заполните свои — это займёт минуту.", "Қазір демо-деректер тұр. Өзіңіздікін толтырыңыз — бір минут."))));
+    sum.append(btn("pill-btn", L("Изменить данные", "Деректерді өзгерту"), () => go("profile")));
     const st = state.settings;
     const cl = $("#famContacts");
     cl.innerHTML = "";
@@ -1181,7 +1249,9 @@
       row.append(el("span", "av av-" + c.color, esc(c.av)));
       row.append(el("div", "row-txt", `<b>${esc(L(c.ru, c.kk))}</b><small>${esc(c.phone)}</small>`));
       const tag = btn("row-tag" + (i ? " second" : ""), i ? L("Второй", "Екінші") : L("Первый", "Бірінші"), () => {
-        st.contacts.reverse(); save(); renderFamily();
+        st.contacts.reverse();
+        if (st.profile) { st.profile.contacts = st.profile.contacts.filter((x) => x && x.name).reverse(); }
+        st.contacts = buildContacts(profile()); applyProfile(); save(); renderFamily();
         toast(L("Порядок звонков изменён", "Қоңырау реті өзгертілді"));
       });
       tag.title = L("Поменять порядок", "Ретін ауыстыру");
@@ -1199,7 +1269,7 @@
     const sf = $("#famSafety");
     sf.innerHTML = "";
     sf.append(toggleRow(L("Сверх лимита — ко мне на подтверждение", "Лимиттен асса — маған растауға"), L("Иначе такой заказ не оформится", "Әйтпесе тапсырыс берілмейді"), st.askOverLimit, (v) => { st.askOverLimit = v; save(); renderFamily(); }));
-    sf.append(toggleRow(L("Видеть заказы Айгуль", "Әйгүлдің тапсырыстарын көру"), L("Только если Айгуль согласна", "Тек Әйгүл келіссе ғана"), st.seeOrders, (v) => { st.seeOrders = v; save(); renderFamily(); }));
+    sf.append(toggleRow(L(`Видеть заказы: ${userName()}`, `Тапсырыстарды көру: ${userName()}`), L(`Только если ${userName()} не против`, `Тек ${userName()} келіссе ғана`), st.seeOrders, (v) => { st.seeOrders = v; save(); renderFamily(); }));
     sf.append(el("div", "row", `<div class="row-txt"><b>${esc(L("«Позвать на помощь»", "«Көмекке шақыру»"))}</b><small>${esc(L("Звоним по порядку контактов, затем оператору и в 103", "Байланыстар ретімен, сосын операторға және 103-ке"))}</small></div>`));
 
     $("#famLimit").textContent = money(st.limit);
@@ -1304,7 +1374,7 @@
       cityList($("#famCity [data-city-list]"), pick);
       const d = DEST.home;
       setText($("#famCityNote"), L(`${name}: ${d.ru.split(", кв.")[0]}. Такси, маршруты и остановки — по улицам этого города.`,
-        `${name}: ${d.kk.split(", 34-пәтер")[0]}. Такси, бағыттар мен аялдамалар — осы қаланың көшелерімен.`));
+        `${name}: ${d.kk.replace(/, [^,]*-пәтер$/, "")}. Такси, бағыттар мен аялдамалар — осы қаланың көшелерімен.`));
     }
     if (!$("#cityOverlay").hidden) renderCityPicker();
   }
@@ -1334,7 +1404,7 @@
 
   function render() {
     renderHome();
-    ({ taxi: renderTaxi, food: renderFood, route: renderRoute, services: renderServices, family: renderFamily }[state.screen] || (() => {}))();
+    ({ taxi: renderTaxi, food: renderFood, route: renderRoute, services: renderServices, family: renderFamily, profile: renderProfile }[state.screen] || (() => {}))();
     renderCity();
   }
 
@@ -1394,10 +1464,139 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#helpOverlay").hidden) closeHelp(); });
 
   /* ==========================================================
+     Profile screen: 4-step registration on first run, one form for later edits
+     ========================================================== */
+  const PF_STEPS = 4;
+  let pfStep = 0, pfDraft = null;
+  const onboarding = () => !state.settings.profile;
+  const pfForm = $("#pfForm");
+  const fld = (n) => pfForm.elements[n];
+  function fillRelSelects() {
+    $$("[data-rel-select]", pfForm).forEach((sel) => {
+      const v = sel.value;
+      sel.innerHTML = Object.keys(REL).map((k) => `<option value="${k}">${esc(L(REL[k].ru.nom, REL[k].kk.nom))}</option>`).join("");
+      if (v) sel.value = v;
+    });
+    const cs = $("#pfCity"), cv = cs.value;
+    cs.innerHTML = CITY_IDS.filter((id) => cityOf(id)).map((id) => `<option value="${id}">${esc(cityName(id))}</option>`).join("");
+    if (cv) cs.value = cv;
+  }
+  function pfLoad() {
+    const pf = state.settings.profile || Object.assign({}, DEMO_PROFILE, { name: "", home: "", flat: "", demo: false, lang: state.lang, city: state.settings.city,
+      contacts: [{ name: "", rel: "daughter", phone: "", addr: "" }, { name: "", rel: "son", phone: "" }] });
+    fillRelSelects();
+    fld("name").value = pf.name || "";
+    $("#pfCity").value = pf.city || state.settings.city;
+    fld("home").value = pf.home || ""; fld("flat").value = pf.flat || "";
+    [0, 1].forEach((i) => {
+      const c = pf.contacts[i] || { name: "", rel: i ? "son" : "daughter", phone: "" };
+      fld(`c${i}name`).value = c.name || ""; fld(`c${i}rel`).value = c.rel || "other"; fld(`c${i}phone`).value = c.phone || "";
+      if (fld(`c${i}addr`)) fld(`c${i}addr`).value = c.addr || "";
+    });
+    pfDraft = { lang: pf.lang || state.lang };
+  }
+  function pfRead() {
+    const v = (n) => (fld(n) && fld(n).value || "").trim().replace(/\s+/g, " ");
+    return {
+      name: v("name"), lang: pfDraft.lang, city: $("#pfCity").value, home: v("home"), flat: v("flat"),
+      contacts: [0, 1].map((i) => ({ name: v(`c${i}name`), rel: fld(`c${i}rel`).value, phone: v(`c${i}phone`), addr: v(`c${i}addr`) })).filter((c) => c.name)
+    };
+  }
+  function pfCheck(step) {
+    const d = pfRead();
+    const err = (m, n) => { const e = $("#pfError"); e.textContent = m; e.hidden = false; if (n && fld(n)) fld(n).focus(); return false; };
+    $("#pfError").hidden = true;
+    if ((step == null || step === 0) && !d.name) return err(L("Напишите или скажите, как к вам обращаться.", "Сізге қалай жүгінетінімізді жазыңыз не айтыңыз."), "name");
+    if ((step == null || step === 2) && !d.home) return err(L("Укажите улицу и дом — сюда приедут такси и курьер.", "Көше мен үйді көрсетіңіз — такси мен курьер осында келеді."), "home");
+    if (step == null || step === 3) {
+      if (!v0()) return err(L("Укажите хотя бы одного близкого человека.", "Кем дегенде бір жақыныңызды көрсетіңіз."), "c0name");
+      if (!/\d{6,}/.test(fld("c0phone").value.replace(/\D/g, ""))) return err(L("Проверьте телефон близкого — нужно не меньше 6 цифр.", "Жақыныңыздың телефонын тексеріңіз — кемінде 6 сан."), "c0phone");
+    }
+    return true;
+    function v0() { return fld("c0name").value.trim(); }
+  }
+  function pfSave(data) {
+    const st = state.settings;
+    const cityChanged = data.city && data.city !== st.city;
+    st.profile = data;
+    st.contacts = buildContacts(data);
+    if (data.lang && data.lang !== state.lang) setLang(data.lang);
+    if (cityChanged) setCity(data.city, { silent: true }); else cityTexts(st.city);
+    save(); applyLang();
+  }
+  function renderProfile() {
+    const ob = onboarding();
+    if (!pfDraft) pfLoad();
+    fillRelSelects();
+    $("#pfKicker").textContent = ob ? L(`Регистрация · шаг ${pfStep + 1} из ${PF_STEPS}`, `Тіркелу · ${pfStep + 1}/${PF_STEPS} қадам`) : L("Мои данные", "Менің деректерім");
+    $("#pfTitle").textContent = ob ? L("Давайте познакомимся", "Танысайық") : L("Ваши данные", "Сіздің деректеріңіз");
+    $("#pfLead").textContent = ob ? L("Четыре коротких шага — и помощник будет знать ваш адрес и близких.", "Төрт қысқа қадам — көмекші мекенжайыңыз бен жақындарыңызды біледі.")
+      : L("Измените что нужно и нажмите «Сохранить».", "Керегін өзгертіп, «Сақтау» басыңыз.");
+    $$("#pfDots i").forEach((d, i) => d.classList.toggle("on", i <= pfStep));
+    $("#pfDots").hidden = !ob;
+    $$(".pf-step", pfForm).forEach((f) => { f.hidden = ob && +f.dataset.pfStep !== pfStep; });
+    $("#pfPrev").hidden = !ob || pfStep === 0;
+    $("#pfNext").textContent = !ob ? L("Сохранить", "Сақтау") : pfStep < PF_STEPS - 1 ? L("Далее", "Келесі") : L("Готово", "Дайын");
+    $("#pfDemo").hidden = !ob;
+    $$("[data-pf-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.pfLang === pfDraft.lang)));
+    document.body.classList.toggle("is-onboarding", ob);
+  }
+  $$("[data-pf-lang]").forEach((b) => b.addEventListener("click", () => {
+    pfDraft.lang = b.dataset.pfLang;
+    if (onboarding()) setLang(pfDraft.lang); else renderProfile();
+  }));
+  $("#pfPrev").addEventListener("click", () => { pfStep = Math.max(0, pfStep - 1); $("#pfError").hidden = true; renderProfile(); });
+  pfForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (onboarding()) {
+      if (!pfCheck(pfStep)) return;
+      if (pfStep < PF_STEPS - 1) { pfStep++; renderProfile(); window.scrollTo(0, 0); const f = $(`[data-pf-step="${pfStep}"] input, [data-pf-step="${pfStep}"] select`); if (f) f.focus(); return; }
+      pfSave(pfRead());
+      pfDraft = null;
+      go("home");
+      // spoken without the name (pre-recorded clip), shown with it
+      setTimeout(() => { reply(L("Готово! Теперь просто скажите, что нужно.", "Дайын! Енді не керегін айтыңыз.")); toast(L(`Добро пожаловать, ${userName()}!`, `Қош келдіңіз, ${userName()}!`)); }, 400);
+      return;
+    }
+    if (!pfCheck()) return;
+    pfSave(pfRead());
+    pfDraft = null;
+    toast(L("Данные сохранены", "Деректер сақталды"));
+    speak(L("Данные сохранены.", "Деректер сақталды."));
+    go("home");
+  });
+  $("#pfDemo").addEventListener("click", () => {
+    pfSave(Object.assign({}, DEMO_PROFILE, { lang: state.lang, city: state.settings.city, contacts: DEMO_PROFILE.contacts.map((c) => Object.assign({}, c)) }));
+    pfDraft = null; go("home");
+  });
+  // dictation into a field: «Сказать голосом» next to names and addresses
+  $$("[data-dictate]").forEach((b) => b.addEventListener("click", () => {
+    const input = fld(b.dataset.dictate) || document.getElementById(b.dataset.dictate);
+    if (!SR) { toast(L("Голосовой ввод недоступен в этом браузере — напишите текстом.", "Бұл браузерде дауыспен енгізу жоқ — мәтінмен жазыңыз.")); input.focus(); return; }
+    const run = (lang) => {
+      try {
+        const r = new SR();
+        r.lang = lang; r.interimResults = true; r.maxAlternatives = 1;
+        let got = false;
+        b.classList.add("is-listening");
+        r.onresult = (e) => { got = true; let t2 = ""; for (let i = 0; i < e.results.length; i++) t2 += e.results[i][0].transcript; input.value = t2.trim().replace(/^./, (c) => c.toUpperCase()).replace(/[.。]$/, ""); };
+        r.onerror = (e) => {
+          if (!got && lang === "kk-KZ" && (e.error === "language-not-supported" || e.error === "service-not-allowed")) { kkRecOff = true; store.set("kkRecOff", true); b.classList.remove("is-listening"); run("ru-RU"); }
+          else if (e.error === "not-allowed") toast(L("Нет доступа к микрофону.", "Микрофонға рұқсат жоқ."));
+        };
+        r.onend = () => b.classList.remove("is-listening");
+        stopSpeech();
+        r.start();
+      } catch (err) { b.classList.remove("is-listening"); }
+    };
+    run(recLang());
+  }));
+
+  /* ==========================================================
      Init
      ========================================================== */
   applyLang();
-  show(location.hash.slice(1) || "home");
+  show(onboarding() ? "profile" : (location.hash.slice(1) || "home"));
   cycleHints();
   if (reduceMotion) drawRays(0); else requestAnimationFrame(rayLoop);
   // fetch the map library in the background, so the taxi / route maps open instantly
