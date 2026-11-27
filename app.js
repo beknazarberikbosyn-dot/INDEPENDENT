@@ -203,6 +203,11 @@
       review: { ru: "«Золотые руки, и чай с нами попил» — Камал, 80 лет", kk: "«Алтын қол, бізбен шай да ішті» — Камал, 80 жаста" } }
   };
   const ART = window.ART || { staff: {}, food: {} };
+  // Real photos (CC0 / public domain, see img/CREDITS.md). Items without a photo keep the drawn illustration.
+  const PHOTO = { food: { bread: "img/food/bread.jpg", milk: "img/food/milk.jpg", eggs: "img/food/eggs.jpg", tea: "img/food/tea.jpg", apple: "img/food/apple.jpg" }, staff: {} };
+  const pic = (kind, key, alt) => PHOTO[kind][key]
+    ? `<img src="${PHOTO[kind][key]}" alt="${esc(alt || "")}" loading="lazy" decoding="async">`
+    : (ART[kind][key] || "");
 
   const SERVICE_NAME = { taxi: { ru: "такси", kk: "такси" }, food: { ru: "продукты", kk: "азық-түлік" }, services: { ru: "бытовые услуги", kk: "тұрмыстық қызметтер" } };
 
@@ -1245,7 +1250,7 @@
     keys.forEach((i) => {
       const it = ITEMS[i], q = s.items[i];
       const row = el("div", "row row-food");
-      row.append(el("span", "food-pic", ART.food[it.art] || ""));
+      row.append(el("span", "food-pic", pic("food", it.art, L(it.ru, it.kk))));
       row.append(el("div", "row-txt", `<b>${esc(L(it.ru, it.kk))}</b><small>${money(it.price)}</small>`));
       if (!locked) {
         const qty = el("div", "qty");
@@ -1264,7 +1269,7 @@
     if (!locked) ITEMS.forEach((it, i) => {
       if (s.items[i]) return;
       const card = btn("food-card", "", () => { s.items[i] = 1; renderFood(); });
-      card.innerHTML = `<span class="food-card-pic">${ART.food[it.art] || ""}</span><b>${esc(L(it.ru, it.kk))}</b><small>${money(it.price)}</small><span class="food-card-add" aria-hidden="true">+</span>`;
+      card.innerHTML = `<span class="food-card-pic">${pic("food", it.art, "")}</span><b>${esc(L(it.ru, it.kk))}</b><small>${money(it.price)}</small><span class="food-card-add" aria-hidden="true">+</span>`;
       card.setAttribute("aria-label", L("Добавить: ", "Қосу: ") + L(it.ru, it.kk) + ", " + money(it.price));
       add.append(card);
     });
@@ -1496,7 +1501,7 @@
     const yrs = (n) => L(`${n} ${plural(n, ["год", "года", "лет"])}`, `${n} жыл`);
     prof.innerHTML = `
       <div class="staff-head">
-        <span class="staff-pic">${ART.staff[s.kind] || ""}</span>
+        <span class="staff-pic">${pic("staff", s.kind, "")}</span>
         <div class="staff-id">
           <small>${esc(L(k.ru, k.kk))}</small>
           <h3>${esc(L(st.name.ru, st.name.kk))}</h3>
