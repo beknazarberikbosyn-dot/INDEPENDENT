@@ -163,7 +163,7 @@
     { art: "bread", rx: new RegExp("(хлеб|(^|" + NL + ")нан" + END + ")", "i"), ru: "Хлеб", kk: "Нан", price: 250 },
     { art: "milk", rx: /(молок|сүт)/i, ru: "Молоко 1 л", kk: "Сүт 1 л", price: 520 },
     { art: "kefir", rx: /(кефир|айран)/i, ru: "Кефир", kk: "Айран", price: 480 },
-    { art: "eggs", rx: /(яйц|жұмыртқа)/i, ru: "Яйца, 10 шт", kk: "Жұмыртқа, 10 дана", price: 900 },
+    { art: "eggs", rx: /(яйц|жұмыртқа)/i, ru: "Яйца, 30 шт", kk: "Жұмыртқа, 30 дана", price: 2400 },
     { art: "sugar", rx: /(сахар|қант)/i, ru: "Сахар 1 кг", kk: "Қант 1 кг", price: 560 },
     { art: "tea", rx: /(чай|шай)/i, ru: "Чай", kk: "Шай", price: 1300 },
     { art: "butter", rx: /(масл|сары май)/i, ru: "Масло", kk: "Сары май", price: 1400 },
@@ -171,7 +171,7 @@
     { art: "apple", rx: /(яблок|алма)/i, ru: "Яблоки 1 кг", kk: "Алма 1 кг", price: 750 },
     { art: "beef", rx: /(мяс|сиыр)/i, ru: "Говядина 1 кг", kk: "Сиыр еті 1 кг", price: 3800 },
     { art: "chicken", rx: /(курин|курица|тауық)/i, ru: "Курица", kk: "Тауық", price: 2200 },
-    { art: "rice", rx: /(рис|күріш)/i, ru: "Рис 1 кг", kk: "Күріш 1 кг", price: 700 }
+    { art: "rice", rx: /(рис|күріш)/i, ru: "Рис 700 г", kk: "Күріш 700 г", price: 650 }
   ];
   const USUAL = { 0: 1, 1: 1, 2: 1 }; // "as usual": bread, milk, kefir
   const DELIVERY = 500;
@@ -204,7 +204,7 @@
   };
   const ART = window.ART || { staff: {}, food: {} };
   // Real photos (CC0 / public domain, see img/CREDITS.md). Items without a photo keep the drawn illustration.
-  const PHOTO = { food: { bread: "img/food/bread.jpg", milk: "img/food/milk.jpg", eggs: "img/food/eggs.jpg", tea: "img/food/tea.jpg", apple: "img/food/apple.jpg" }, staff: {} };
+  const PHOTO = { food: { bread: "img/food/bread.jpg", milk: "img/food/milk.jpg", eggs: "img/food/eggs.jpg", tea: "img/food/tea.jpg", apple: "img/food/apple.jpg", potato: "img/food/potato.jpg", rice: "img/food/rice.jpg" }, staff: {} };
   const pic = (kind, key, alt) => PHOTO[kind][key]
     ? `<img src="${PHOTO[kind][key]}" alt="${esc(alt || "")}" loading="lazy" decoding="async">`
     : (ART[kind][key] || "");
